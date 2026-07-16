@@ -13,7 +13,7 @@
 解压迁移包后，在 macOS 终端执行：
 
 ```bash
-git clone "南烛枫视频转文字.bundle" VideoTranscriber
+git clone --branch main "南烛枫视频转文字.bundle" VideoTranscriber
 cd VideoTranscriber
 git status --short
 ```
