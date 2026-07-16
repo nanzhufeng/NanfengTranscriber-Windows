@@ -1,0 +1,34 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local runtime files and user output
+runtime-log.txt
+startup-log.txt
+benchmark-output/
+test-output/
+*.log
+
+# PyInstaller and Windows delivery artifacts
+build/
+build_*/
+dist/
+dist_*/
+WindowsSetup_*/
+Windows*/
+*.exe
+*.zip
+*.pkg
+
+# Mac local artifacts
+*.app/
+*.dmg
+*.command.log
+
+# Local migration staging only
+migration-staging/
+*.bundle
