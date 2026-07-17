@@ -6,6 +6,7 @@ import hashlib
 import math
 import os
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -26,6 +27,10 @@ MODEL_REPOS = {
     "medium": "Systran/faster-whisper-medium",
     "large-v3": "Systran/faster-whisper-large-v3",
 }
+
+
+def _is_frozen_runtime() -> bool:
+    return bool(getattr(sys, "frozen", False))
 
 
 class TranscribeStopped(RuntimeError):
@@ -291,13 +296,14 @@ def _write_docx(target: Path, source: Path, text: str) -> None:
 
 
 def _dll_exists_in_path(dll_names: set[str]) -> bool:
-    for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
-        spec = importlib.util.find_spec(package_name)
-        if spec and spec.submodule_search_locations:
-            bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
-            for dll_name in dll_names:
-                if (bin_dir / dll_name).exists():
-                    return True
+    if not _is_frozen_runtime():
+        for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
+            spec = importlib.util.find_spec(package_name)
+            if spec and spec.submodule_search_locations:
+                bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
+                for dll_name in dll_names:
+                    if (bin_dir / dll_name).exists():
+                        return True
     for folder in os.environ.get("PATH", "").split(os.pathsep):
         if not folder:
             continue
@@ -319,6 +325,9 @@ def _add_nvidia_dll_directories() -> None:
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return
     if _NVIDIA_DLL_DIRECTORIES_ADDED:
+        return
+    if _is_frozen_runtime():
+        _NVIDIA_DLL_DIRECTORIES_ADDED = True
         return
     for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
         spec = importlib.util.find_spec(package_name)

@@ -23,7 +23,7 @@
 | 依赖 | `PySide6`、`faster-whisper`、`python-docx` |
 | 外部工具 | FFmpeg / FFprobe，优先查找项目或 `JHlib\ffmpeg` |
 | Windows 交付 | PyInstaller 目录包、便携 zip、可点击安装 zip 均已生成过 |
-| 最新可点击安装包 | `南烛枫视频转文字_Windows_Click_Setup_20260715_234902.zip` |
+| 最新可点击安装包 | `南烛枫视频转文字_Windows_Click_Setup_20260717_124356.zip` |
 
 ## 3. 产品形态与 UI 方向
 

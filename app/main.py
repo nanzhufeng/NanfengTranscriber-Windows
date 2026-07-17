@@ -76,6 +76,24 @@ REQUIRED_DEPENDENCIES = {
     "docx": "python-docx",
 }
 
+
+def _is_frozen_runtime() -> bool:
+    """PyInstaller 包内的运行时已随包携带依赖，无需再做模块发现扫描。"""
+    return bool(getattr(sys, "frozen", False))
+
+
+def _missing_runtime_dependencies(export_docx: bool) -> list[str]:
+    """只在源码环境检测可选依赖，避免冻结版的 find_spec 阻塞界面线程。"""
+    if _is_frozen_runtime():
+        return []
+
+    missing: list[str] = []
+    if importlib.util.find_spec("faster_whisper") is None:
+        missing.append(REQUIRED_DEPENDENCIES["faster_whisper"])
+    if export_docx and importlib.util.find_spec("docx") is None:
+        missing.append(REQUIRED_DEPENDENCIES["docx"])
+    return missing
+
 COL_INDEX = 0
 COL_SELECT = 1
 COL_STATUS = 2
@@ -981,13 +999,16 @@ class MainWindow(QMainWindow):
         self.worker_thread.start()
 
     def _dll_exists_in_path(self, dll_names: set[str]) -> bool:
-        for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
-            spec = importlib.util.find_spec(package_name)
-            if spec and spec.submodule_search_locations:
-                bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
-                for dll_name in dll_names:
-                    if (bin_dir / dll_name).exists():
-                        return True
+        # 冻结版不通过 find_spec 查找外部 Python 包。该调用在部分 PyInstaller
+        # 环境会阻塞主线程；安装包内的 DLL 由 PATH 或系统 CUDA 路径提供。
+        if not _is_frozen_runtime():
+            for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
+                spec = importlib.util.find_spec(package_name)
+                if spec and spec.submodule_search_locations:
+                    bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
+                    for dll_name in dll_names:
+                        if (bin_dir / dll_name).exists():
+                            return True
         for folder in os.environ.get("PATH", "").split(os.pathsep):
             if not folder:
                 continue
@@ -1037,12 +1058,7 @@ class MainWindow(QMainWindow):
         return items
 
     def _missing_dependencies(self) -> list[str]:
-        missing: list[str] = []
-        if importlib.util.find_spec("faster_whisper") is None:
-            missing.append(REQUIRED_DEPENDENCIES["faster_whisper"])
-        if self.docx_check.isChecked() and importlib.util.find_spec("docx") is None:
-            missing.append(REQUIRED_DEPENDENCIES["docx"])
-        return missing
+        return _missing_runtime_dependencies(self.docx_check.isChecked())
 
     def _start(self) -> None:
         self._debug_log("start clicked")
@@ -1077,13 +1093,18 @@ class MainWindow(QMainWindow):
             )
             self._debug_log("start aborted: polish enabled without API key")
             return
-        if self._missing_dependencies():
+        self._debug_log("dependency scan: begin")
+        missing_dependencies = self._missing_dependencies()
+        self._debug_log(f"dependency scan: missing={missing_dependencies}")
+        if missing_dependencies:
             self._debug_log("dependencies missing: start installer")
             self._install_dependency_then_start()
             return
+        self._debug_log("gpu runtime scan: begin")
         if not self._warn_gpu_runtime_if_needed():
             self._debug_log("start aborted: gpu warning rejected")
             return
+        self._debug_log("gpu runtime scan: completed")
         if self.compute_mode_combo.currentText() == "GPU 优先":
             has_cublas = self._dll_exists_in_path({"cublas64_12.dll"})
             has_cudnn = self._dll_exists_in_path({"cudnn64_9.dll"})

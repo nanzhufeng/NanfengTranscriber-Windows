@@ -1,6 +1,6 @@
 # 当前接手状态：南烛枫 - 视频转文字
 
-> 更新日期：2026-07-16  
+> 更新日期：2026-07-17
 > 适用分支：`main`（本次迁移建立的首个本地 Git 快照）  
 > 当前平台事实：Windows 源码已验证；macOS 尚未实施。
 
@@ -29,6 +29,13 @@
 - 只在明确 CUDA/cuBLAS/cuDNN/GPU 运行时错误时回退 CPU；CPU 使用 `int8` 并复用模型。
 - `TranscribeWorker` 仅创建一个会话；停止后不再启动下一项。
 
+## 最近完成：安装版启动修复与 GitHub 首版
+
+- 修复 PyInstaller 安装版点击“开始转写”后可能停在主线程、没有进入 Worker 的问题。
+- 冻结版不再通过 `find_spec` 扫描已打包依赖和外部 NVIDIA Python 包；保留 PATH 与系统 CUDA DLL 检测。
+- 新增冻结运行时回归测试，并为依赖扫描、GPU 检测和 Worker 启动增加诊断日志。
+- GitHub 首版使用 `v1.0.0`，安装资产为 `南烛枫视频转文字_Windows_Click_Setup_20260717_124356.zip`。
+
 ## 最近验证
 
 ### 已在真实 Windows 环境验证
@@ -40,10 +47,12 @@
 
 ### 已在自动化或源码层验证
 
-- `python -m unittest discover -s tests -v`：9 个测试通过。
+- `python -m unittest discover -s tests -v`：13 个测试通过。
 - `python -m compileall app tests tools`：通过。
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。
+- GitHub 首版 PyInstaller EXE 已启动验证：进程正常响应、标题正确，FFmpeg/FFprobe 均包含在运行目录中。
+- 首版安装 ZIP 已检查，仅包含 Setup EXE 与安装说明；ZIP SHA-256 为 `7BAB480D10B2455D841889622CC234F0AA24247A406C5AAAD82A0D7DD4432D67`。
 
 ## 已知边界与风险
 
