@@ -34,7 +34,8 @@
 - 修复 PyInstaller 安装版点击“开始转写”后可能停在主线程、没有进入 Worker 的问题。
 - 冻结版不再通过 `find_spec` 扫描已打包依赖和外部 NVIDIA Python 包；保留 PATH 与系统 CUDA DLL 检测。
 - 新增冻结运行时回归测试，并为依赖扫描、GPU 检测和 Worker 启动增加诊断日志。
-- GitHub Windows 首版使用 `v1.0.0`，当前安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`。
+- GitHub Windows 仓库固定命名为 `nanzhufeng/NanfengTranscriber-Windows`，首版使用 `v1.0.0`，当前安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`。
+- 跨平台仓库必须在名称中明确平台：Windows 使用 `NanfengTranscriber-Windows`，Android 使用 `NanfengTranscriber-Android`；应用内产品名统一为“南枫转写”。
 
 ## 最近验证
 

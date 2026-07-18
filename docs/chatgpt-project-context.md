@@ -23,7 +23,10 @@
 | 依赖 | `PySide6`、`faster-whisper`、`python-docx` |
 | 外部工具 | FFmpeg / FFprobe，优先查找项目或 `JHlib\ffmpeg` |
 | Windows 交付 | PyInstaller 目录包、便携 zip、可点击安装 zip 均已生成过 |
+| Windows GitHub 仓库 | `nanzhufeng/NanfengTranscriber-Windows` |
 | 最新可点击安装包 | `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip` |
+
+平台命名是长期约束：Windows 仓库使用 `NanfengTranscriber-Windows`，Android 仓库使用 `NanfengTranscriber-Android`。应用内产品名均保持“南枫转写”，平台差异由仓库、Release 和安装产物名称表达。
 
 ## 3. 产品形态与 UI 方向
 
