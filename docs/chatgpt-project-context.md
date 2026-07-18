@@ -1,12 +1,12 @@
-# 南烛枫视频转文字：ChatGPT 项目开发上下文与经验文档
+# 南枫转写：ChatGPT 项目开发上下文与经验文档
 
 > 更新时间：2026-07-15  
-> 用途：这是给 ChatGPT / Codex 延续理解 `南烛枫视频转文字` 的项目级上下文文档。未来为南烛枫继续设计、排错、打包、迁移 Mac 版或提出同类工具建议前，应先阅读本文件，再结合南烛枫长期工具软件偏好。  
+> 用途：这是给 ChatGPT / Codex 延续理解 `南枫转写` 的项目级上下文文档。未来为南烛枫继续设计、排错、打包、迁移 Mac 版或提出同类工具建议前，应先阅读本文件，再结合南烛枫长期工具软件偏好。
 > 重要更正：本文件描述的是 **视频转文字桌面工具**，不是 `南枫记` 记账 App，也不是 `南烛枫视频下载器`。
 
 ## 1. 一句话定位
 
-`南烛枫视频转文字` 是一个面向南烛枫影视/动画/VFX 工作流的 **本地优先批量音视频转写工具**。
+`南枫转写` 是一个面向南烛枫影视/动画/VFX 工作流的 **本地优先批量音视频转写工具**。
 
 它的目标不是做云端协作平台，也不是简单命令行封装，而是提供一个可直接工作的桌面工作台：批量导入视频/音频，选择模型、语言和 CPU/GPU 模式，转写为 TXT、Markdown、SRT、DOCX，并可选进行“转写后翻译/润色”为现代简体中文。
 
@@ -23,7 +23,7 @@
 | 依赖 | `PySide6`、`faster-whisper`、`python-docx` |
 | 外部工具 | FFmpeg / FFprobe，优先查找项目或 `JHlib\ffmpeg` |
 | Windows 交付 | PyInstaller 目录包、便携 zip、可点击安装 zip 均已生成过 |
-| 最新可点击安装包 | `南烛枫视频转文字_Windows_Click_Setup_20260717_124356.zip` |
+| 最新可点击安装包 | `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip` |
 
 ## 3. 产品形态与 UI 方向
 
@@ -125,8 +125,8 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 
 默认输出路径：
 
-- D 盘存在时：`D:\南烛枫视频转文字`
-- 否则：用户 Downloads 下的 `南烛枫视频转文字`
+- D 盘存在时：`D:\南枫转写`
+- 否则：用户 Downloads 下的 `南枫转写`
 
 文件名和目录必须处理 Windows 长路径风险。当前采用 `safe_output_stem` 截断并加短 hash，避免 `WinError 206 文件名或扩展名太长`。
 
@@ -140,12 +140,12 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 2. PyInstaller 便携目录 + zip。
 3. Windows 可点击安装包 zip。
 
-用户明确要“可点击安装”的压缩包时，不是便携 zip，而是 zip 内含 `南烛枫视频转文字_Setup.exe` 和说明文件。
+用户明确要“可点击安装”的压缩包时，不是便携 zip，而是 zip 内含 `南枫转写_Setup.exe` 和说明文件。
 
 已生成过：
 
-- 便携包：`南烛枫视频转文字_Windows安装包_20260706_093338.zip`
-- 可点击安装包：`南烛枫视频转文字_Windows可点击安装包_20260706_095501.zip`
+- 便携包：`南枫转写_Windows_便携包_<构建时间>.zip`
+- 可点击安装包：`NanfengTranscriber_Windows_v1.0.0_Setup_<构建时间>.zip`
 - 另有构建脚本：`build_windows_installer.ps1`
 
 注意：IExpress 对大 payload 不稳定，曾出现生成了 exe 但返回码/流程不可靠的情况。后续若继续做正式安装包，更稳的路径应考虑 Inno Setup 或 NSIS；若当前机器未安装，则可继续使用 IExpress 但必须以“文件真实生成且大小正常”为成功判断。
@@ -191,9 +191,9 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 ### 已确认
 
 - 源码 bat 路径可启动。
-- PyInstaller exe 曾验证可启动，窗口标题为 `南烛枫 - 视频转文字`。
+- PyInstaller exe 曾验证可启动，窗口标题为 `南枫转写`。
 - 便携 zip 内含 exe、说明和 `_internal` 依赖。
-- 可点击安装 zip 内含 `南烛枫视频转文字_Setup.exe` 和说明文件。
+- 可点击安装 zip 内含 `南枫转写_Setup.exe` 和说明文件。
 - GPU 缺运行库时需要自动回退 CPU，而不是卡住。
 - 路径过长需要短文件名策略。
 
@@ -209,7 +209,7 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 
 如果未来要让 Codex 在 Mac 上重做版本，提示词必须明确：
 
-- 这是 `南烛枫视频转文字`，不是视频下载器，也不是南枫记。
+- 这是 `南枫转写`，不是视频下载器，也不是南枫记。
 - 保持 Windows 最新版 UI 结构和功能逻辑，不重做成另一个软件。
 - 先检查 macOS、架构、Python、pip、ffmpeg/ffprobe、PySide6、faster-whisper、ctranslate2、huggingface_hub、python-docx、PyInstaller。
 - 先生成 `.command` 启动脚本并测试能打开，再打包 `.app`。
@@ -267,10 +267,10 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 
 ## 11. 2026-07-15 性能版 Windows 交付
 
-- 已使用当前 `南烛枫视频转文字.spec` 重新构建性能优化后的 PyInstaller 目录包。
-- 便携目录：`dist_release_performance_20260715_230000\\南烛枫视频转文字`。
-- 便携 EXE 已本机启动 5 秒，窗口标题确认是 `南烛枫 - 视频转文字`；检查后已关闭测试进程。
+- 已使用当前 `南枫转写_Windows.spec` 重新构建性能优化后的 PyInstaller 目录包。
+- 便携目录：`dist_release_<构建时间>\\南枫转写`。
+- 便携 EXE 已本机启动验证，窗口标题确认是 `南枫转写`；检查后已关闭测试进程。
 - FFmpeg 和转写图标资源已包含在便携目录。
 - 首次性能版安装器存在通配符复制错误，未把主 EXE 写入安装目录；该文件不再作为交付版本。
-- 修复后的可点击安装 ZIP：`南烛枫视频转文字_Windows_Click_Setup_20260715_234902.zip`，内含 `南烛枫视频转文字_Setup.exe` 与 `Install-Readme.txt`。
+- 当前可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`，内含 `南枫转写_Setup.exe` 与 `Install-Readme.txt`，SHA-256 为 `EE86E9596AF081857877C8694973B7F8DA94D2FC916DE95EED089DAB2F5F4DB0`。
 - 使用安装器的真实 payload 做过无系统写入模拟：主 EXE 与 FFmpeg 均可复制到目标安装目录。尚未在本机执行实际安装，避免修改现有系统安装状态；文件未做数字签名，Windows 可能显示 SmartScreen 提示。

@@ -40,7 +40,7 @@ Compress-Archive -LiteralPath $payloadSource -DestinationPath $payloadZip -Force
 Copy-Item -LiteralPath (Join-Path $projectDir 'installer\install.cmd') -Destination (Join-Path $safeStage 'install.cmd') -Force
 Copy-Item -LiteralPath (Join-Path $projectDir 'installer\install.ps1') -Destination (Join-Path $safeStage 'install.ps1') -Force
 
-$setupTemp = Join-Path $safeStage 'NanzhufengVideoTranscriberSetup.exe'
+$setupTemp = Join-Path $safeStage 'NanfengTranscriberWindowsSetup.exe'
 $sedPath = Join-Path $safeStage 'installer.sed'
 $sed = @"
 [Version]
@@ -59,7 +59,7 @@ InstallPrompt=
 DisplayLicense=
 FinishMessage=
 TargetName=$setupTemp
-FriendlyName=Nanzhufeng Video Transcriber Setup
+FriendlyName=Nanfeng Transcriber Windows Setup
 AppLaunched=install.cmd
 PostInstallCmd=<None>
 AdminQuietInstCmd=install.cmd
@@ -78,7 +78,14 @@ SourceFiles0=$safeStage\
 "@
 Set-Content -LiteralPath $sedPath -Value $sed -Encoding ASCII
 
-$iexpress = Join-Path $env:WINDIR 'System32\iexpress.exe'
+$windowsRoot = $env:WINDIR
+if (-not $windowsRoot) {
+    $windowsRoot = $env:SystemRoot
+}
+if (-not $windowsRoot) {
+    $windowsRoot = 'C:\Windows'
+}
+$iexpress = Join-Path $windowsRoot 'System32\iexpress.exe'
 if (-not (Test-Path -LiteralPath $iexpress)) {
     throw ('IExpress was not found: ' + $iexpress)
 }
@@ -97,7 +104,7 @@ Copy-Item -LiteralPath $setupTemp -Destination $setupFinal -Force
 
 $installReadme = Join-Path $installerOutDir 'Install-Readme.txt'
 @"
-Nanzhufeng Video Transcriber Windows setup package
+Nanfeng Transcriber Windows setup package
 
 How to install:
 1. Extract the whole zip package.
@@ -111,7 +118,7 @@ Notes:
 - If CUDA / cuBLAS / cuDNN is unavailable, the app falls back to CPU.
 "@ | Set-Content -LiteralPath $installReadme -Encoding UTF8
 
-$zipFinal = Join-Path $projectDir ("${appName}_Windows_Click_Setup_$timestamp.zip")
+$zipFinal = Join-Path $projectDir ("NanfengTranscriber_Windows_v1.0.0_Setup_$timestamp.zip")
 Compress-Archive -LiteralPath $setupFinal, $installReadme -DestinationPath $zipFinal -Force
 
 [pscustomobject]@{

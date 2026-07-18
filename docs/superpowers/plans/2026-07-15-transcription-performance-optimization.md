@@ -396,7 +396,7 @@ Expected: 两条命令退出码均为 0，输出 `imports OK`。
 Run:
 
 ```powershell
-Start-Process -FilePath '.\启动南烛枫视频转文字_源码测试.bat'
+Start-Process -FilePath '.\启动南枫转写_Windows_源码测试.bat'
 ```
 
 人工检查：窗口能打开、标题和现有 UI 不变、无闪退。完成后正常关闭窗口，不扩大 UI 测试范围。

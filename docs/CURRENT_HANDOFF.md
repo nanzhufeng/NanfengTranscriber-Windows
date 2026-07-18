@@ -1,4 +1,4 @@
-# 当前接手状态：南烛枫 - 视频转文字
+# 当前接手状态：南枫转写
 
 > 更新日期：2026-07-17
 > 适用分支：`main`（本次迁移建立的首个本地 Git 快照）  
@@ -34,7 +34,7 @@
 - 修复 PyInstaller 安装版点击“开始转写”后可能停在主线程、没有进入 Worker 的问题。
 - 冻结版不再通过 `find_spec` 扫描已打包依赖和外部 NVIDIA Python 包；保留 PATH 与系统 CUDA DLL 检测。
 - 新增冻结运行时回归测试，并为依赖扫描、GPU 检测和 Worker 启动增加诊断日志。
-- GitHub 首版使用 `v1.0.0`，安装资产为 `南烛枫视频转文字_Windows_Click_Setup_20260717_124356.zip`。
+- GitHub Windows 首版使用 `v1.0.0`，当前安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`。
 
 ## 最近验证
 
@@ -42,7 +42,7 @@
 
 - RTX 4090、`medium`、中文、GPU 优先、关闭润色、三个固定样本：`130.499 秒 -> 28.403 秒`，改善 `78.2%`。
 - CPU 稳定 / int8：25 秒真实样本完成，耗时 `6.906 秒`。
-- PyInstaller 性能版 EXE 已短暂启动，标题为 `南烛枫 - 视频转文字`。
+- PyInstaller 性能版 EXE 已短暂启动，标题为 `南枫转写`。
 - 修复后的 Windows Setup 使用真实 payload 做过无系统写入模拟，主 EXE 与 FFmpeg 能复制到目标目录；尚未做实际安装。
 
 ### 已在自动化或源码层验证
@@ -52,7 +52,7 @@
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。
 - GitHub 首版 PyInstaller EXE 已启动验证：进程正常响应、标题正确，FFmpeg/FFprobe 均包含在运行目录中。
-- 首版安装 ZIP 已检查，仅包含 Setup EXE 与安装说明；ZIP SHA-256 为 `7BAB480D10B2455D841889622CC234F0AA24247A406C5AAAD82A0D7DD4432D67`。
+- 当前安装 ZIP 已检查，仅包含 `南枫转写_Setup.exe` 与安装说明；ZIP SHA-256 为 `EE86E9596AF081857877C8694973B7F8DA94D2FC916DE95EED089DAB2F5F4DB0`。
 
 ## 已知边界与风险
 

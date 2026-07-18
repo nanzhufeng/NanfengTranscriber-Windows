@@ -150,7 +150,7 @@ def build_record(source: Path, elapsed: float, result: transcriber.TranscribeRes
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="南烛枫视频转文字性能基准")
+    parser = argparse.ArgumentParser(description="南枫转写性能基准")
     parser.add_argument("--label", required=True, help="本次测量标识，例如 baseline 或 optimized")
     parser.add_argument("--result", required=True, type=Path, help="JSON 结果文件")
     return parser.parse_args()

@@ -1,4 +1,4 @@
-# 南烛枫 - 视频转文字
+# 南枫转写
 
 面向影视、动画与 VFX 工作流的本地优先批量音视频转写工具。项目基于 Python、PySide6、faster-whisper 和 FFmpeg，支持 Windows 本地转写、GPU/CPU 自动降级、批量队列与多格式导出。
 
@@ -15,7 +15,7 @@
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `南烛枫视频转文字_Windows_Click_Setup_*.zip`，解压后双击其中的 `南烛枫视频转文字_Setup.exe`。
+从 GitHub Releases 下载标注为“Windows 可点击安装包”的 `NanfengTranscriber_Windows_*.zip`，解压后双击其中的 `南枫转写_Setup.exe`。
 
 首次使用某个 Whisper 模型时需要联网下载模型文件。安装包尚未进行商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
 
@@ -29,7 +29,7 @@ python -m unittest discover -s tests -v
 python start.py
 ```
 
-Windows 也可双击 `启动南烛枫视频转文字_源码测试.bat`。本地模型文件、日志、构建目录和安装包不会提交到 Git。
+Windows 也可双击 `启动南枫转写_Windows_源码测试.bat`。本地模型文件、日志、构建目录和安装包不会提交到 Git。
 
 ## 翻译与润色
 

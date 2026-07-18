@@ -60,8 +60,8 @@ class TranscribeResult:
 def default_output_dir() -> Path:
     d_drive = Path("D:/")
     if d_drive.exists():
-        return d_drive / "南烛枫视频转文字"
-    return Path.home() / "Downloads" / "南烛枫视频转文字"
+        return d_drive / "南枫转写"
+    return Path.home() / "Downloads" / "南枫转写"
 
 
 def find_ffmpeg_dir(project_root: Path) -> Path | None:
@@ -672,7 +672,7 @@ def transcribe_file(
     if importlib.util.find_spec("faster_whisper") is None:
         raise RuntimeError(
             "缺少 faster-whisper 转写依赖。\n\n"
-            "处理方式：在 VideoTranscriber 目录运行：\n"
+            "处理方式：在项目目录运行：\n"
             "pip install -r requirements.txt\n\n"
             "安装后重新打开 bat 再开始转写。"
         )

@@ -3,7 +3,7 @@
 将下面内容完整粘贴给 Mac 上的 Codex：
 
 ```text
-请基于当前 Git 仓库继续开发「南烛枫 - 视频转文字」的 macOS 版本。
+请基于当前 Git 仓库继续开发「南枫转写」的 macOS 版本。
 
 这是批量视频/音频转文字桌面工具，不是视频下载器，也不是南枫记。保留 Windows 最新源码的工作台 UI、批量队列、导出格式和交互原则；不要重做成其他产品。
 
@@ -14,7 +14,7 @@
 
 平台改造要求：
 - 不得复用 Windows 的 EXE、IExpress、BAT、PowerShell 安装器、D: 路径、CUDA DLL 检测或 ..\\JHlib\\ffmpeg 路径。
-- 默认输出目录应使用用户目录下的明确文件夹，例如 ~/Movies/南烛枫视频转文字；所有路径用 pathlib 处理。
+- 默认输出目录应使用用户目录下的明确文件夹，例如 ~/Movies/南枫转写；所有路径用 pathlib 处理。
 - FFmpeg/FFprobe 先检查 PATH、/opt/homebrew/bin、/usr/local/bin；缺失时给出明确提示，不静默失败。
 - GPU 不得假设 CUDA 可用。先验证 current ctranslate2/faster-whisper 在该 Mac、该架构上的真实支持；未验证前默认可靠 CPU 路径，并在 UI 中说明状态。
 - 保留 TXT、Markdown、SRT、DOCX；保留可选 API 翻译润色，不要把它宣传为本地自动翻译。

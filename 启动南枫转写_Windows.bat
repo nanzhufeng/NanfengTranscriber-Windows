@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 set "LOG=%~dp0startup-log.txt"
-echo Starting Nanzhufeng Video Transcriber... > "%LOG%"
+echo Starting Nanfeng Transcriber Windows... > "%LOG%"
 echo Log file: %LOG% >> "%LOG%"
 
 for /f "delims=" %%P in ('where.exe pythonw.exe 2^>nul') do (

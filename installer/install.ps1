@@ -5,7 +5,7 @@ if (-not (Test-Path -LiteralPath $payload)) {
     throw 'payload.zip is missing.'
 }
 
-$tempExtract = Join-Path $env:TEMP ('nanzhufeng_vtt_install_' + [Guid]::NewGuid().ToString('N'))
+$tempExtract = Join-Path $env:TEMP ('nanfeng_transcriber_install_' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null
 
 try {
@@ -38,7 +38,7 @@ try {
     $shortcut.Description = $appName
     $shortcut.Save()
 
-    $startMenuDir = Join-Path ([Environment]::GetFolderPath('Programs')) 'Nanzhufeng'
+    $startMenuDir = Join-Path ([Environment]::GetFolderPath('Programs')) '南枫'
     New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
     $startShortcut = Join-Path $startMenuDir ($appName + '.lnk')
     $shortcut = $shell.CreateShortcut($startShortcut)

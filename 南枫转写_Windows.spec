@@ -44,7 +44,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='南烛枫视频转文字',
+    name='南枫转写',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -55,7 +55,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='app\\assets\\nanzhufeng-video-transcriber-icon.ico',
+    icon='app\\assets\\nanfeng-transcriber-icon.ico',
 )
 coll = COLLECT(
     exe,
@@ -64,5 +64,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='南烛枫视频转文字',
+    name='南枫转写',
 )

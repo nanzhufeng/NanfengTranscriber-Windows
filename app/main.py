@@ -51,7 +51,7 @@ from .transcriber import (
 )
 
 
-APP_NAME = "南烛枫 - 视频转文字"
+APP_NAME = "南枫转写"
 SUPPORTED_EXTENSIONS = {
     ".mp4",
     ".mov",
@@ -288,7 +288,7 @@ class MainWindow(QMainWindow):
         self.gpu_runtime_warning_ack = False
 
         self.setWindowTitle(APP_NAME)
-        icon_path = self._asset_path("nanzhufeng-video-transcriber-icon.png")
+        icon_path = self._asset_path("nanfeng-transcriber-icon.png")
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1820, 1130)
