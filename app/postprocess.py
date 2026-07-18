@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 from typing import Callable
@@ -13,6 +14,9 @@ ProgressCallback = Callable[[dict[str, object]], None]
 
 class TextPostprocessError(RuntimeError):
     """Raised when AI translation/polishing cannot run."""
+
+
+API_TIMEOUT_SECONDS = 120
 
 
 def _split_text(text: str, max_chars: int = 6000) -> list[str]:
@@ -65,18 +69,34 @@ def _request_chat_completion(prompt: str, text: str) -> str:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=API_TIMEOUT_SECONDS) as response:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")[:500]
-        raise TextPostprocessError(f"翻译润色 API 返回错误：{exc.code} {detail}") from exc
+        if exc.code in {401, 403}:
+            raise TextPostprocessError(
+                f"翻译润色 API 鉴权失败（HTTP {exc.code}）。请检查 API Key、服务地址和账号权限。"
+            ) from exc
+        raise TextPostprocessError(f"翻译润色 API 返回错误（HTTP {exc.code}）。请稍后重试。") from exc
+    except (TimeoutError, socket.timeout) as exc:
+        raise TextPostprocessError(
+            f"翻译润色 API 请求超时（{API_TIMEOUT_SECONDS} 秒）。请检查网络或稍后重试。"
+        ) from exc
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise TextPostprocessError(
+                f"翻译润色 API 请求超时（{API_TIMEOUT_SECONDS} 秒）。请检查网络或稍后重试。"
+            ) from exc
+        raise TextPostprocessError("翻译润色 API 连接失败。请检查网络和服务地址。") from exc
     except Exception as exc:
         raise TextPostprocessError(f"翻译润色 API 调用失败：{exc}") from exc
 
     try:
-        return data["choices"][0]["message"]["content"].strip()
-    except Exception as exc:
-        raise TextPostprocessError(f"翻译润色 API 返回格式异常：{data}") from exc
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise TextPostprocessError("翻译润色 API 返回格式异常，未找到正文内容。") from exc
+    if not isinstance(content, str) or not content.strip():
+        raise TextPostprocessError("翻译润色 API 返回空内容，请重试或更换模型。")
+    return content.strip()
 
 
 def polish_to_simplified_chinese(

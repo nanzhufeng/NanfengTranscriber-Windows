@@ -3,6 +3,7 @@
 > 更新时间：2026-07-15  
 > 用途：这是给 ChatGPT / Codex 延续理解 `南枫转写` 的项目级上下文文档。未来为南烛枫继续设计、排错、打包、迁移 Mac 版或提出同类工具建议前，应先阅读本文件，再结合南烛枫长期工具软件偏好。
 > 重要更正：本文件描述的是 **视频转文字桌面工具**，不是 `南枫记` 记账 App，也不是 `南烛枫视频下载器`。
+> 当前工程事实优先读取 `docs/context.md`；本文件主要保留产品、UI 和历史经验细节。
 
 ## 1. 一句话定位
 
@@ -24,7 +25,7 @@
 | 外部工具 | FFmpeg / FFprobe，优先查找项目或 `JHlib\ffmpeg` |
 | Windows 交付 | PyInstaller 目录包、便携 zip、可点击安装 zip 均已生成过 |
 | Windows GitHub 仓库 | `nanzhufeng/NanfengTranscriber-Windows` |
-| 最新可点击安装包 | `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip` |
+| 最新可点击安装包 | `NanfengTranscriber_Windows_v1.0.0_Setup_20260719_001129.zip` |
 
 平台命名是长期约束：Windows 仓库使用 `NanfengTranscriber-Windows`，Android 仓库使用 `NanfengTranscriber-Android`。应用内产品名均保持“南枫转写”，平台差异由仓库、Release 和安装产物名称表达。
 
@@ -85,7 +86,7 @@
 - 如果缺 CUDA / cuBLAS / cuDNN，自动提示并回退 CPU。
 - 如果 GPU 模型加载实际失败，当前项改用 CPU 重试，后续任务也应自动使用 CPU。
 - 不应让用户卡在“加载模型”没有反馈。
-- 首次使用模型可能需要联网下载，状态栏应明确显示“下载模型 / 加载模型”。
+- 首次使用模型可能需要联网下载，状态栏应明确显示“下载模型 / 加载模型”。成功后长期保存在 `%LOCALAPPDATA%\NanfengTranscriber\models`，以后启动只读本地缓存；可用 `NANFENG_TRANSCRIBER_MODEL_DIR` 覆盖。
 
 ### 4.4 输出格式
 
@@ -112,6 +113,8 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 - 可选 `NANZHU_TEXT_MODEL`
 
 默认关闭条件：没有可用 API Key 时不应默认勾选。开启但没有 API Key 时，应在开始前阻止并明确说明。
+
+API 合同：401/403 必须提示检查 Key、服务地址和账号权限；超时、连接失败、空内容、异常格式分别报告；任何错误都不能回显 Key 或完整服务响应。
 
 ### 4.6 已存在结果处理
 
@@ -143,15 +146,16 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 2. PyInstaller 便携目录 + zip。
 3. Windows 可点击安装包 zip。
 
-用户明确要“可点击安装”的压缩包时，不是便携 zip，而是 zip 内含 `南枫转写_Setup.exe` 和说明文件。
+用户明确要“可点击安装”的压缩包时，不是便携 zip，而是 zip 内含平台名明确的 Setup EXE 和中文优先的 `安装说明.txt`。
 
 已生成过：
 
 - 便携包：`南枫转写_Windows_便携包_<构建时间>.zip`
 - 可点击安装包：`NanfengTranscriber_Windows_v1.0.0_Setup_<构建时间>.zip`
-- 另有构建脚本：`build_windows_installer.ps1`
+- 当前标准构建脚本：`build_windows_installer_inno.ps1`，工程为 `installer/NanfengTranscriber-Windows.iss`。
+- `build_windows_installer.ps1` 与 `installer/install.*` 仅保留为旧 IExpress 回退。
 
-注意：IExpress 对大 payload 不稳定，曾出现生成了 exe 但返回码/流程不可靠的情况。后续若继续做正式安装包，更稳的路径应考虑 Inno Setup 或 NSIS；若当前机器未安装，则可继续使用 IExpress 但必须以“文件真实生成且大小正常”为成功判断。
+IExpress 对大 payload 不稳定，曾出现生成了 exe 但返回码/流程不可靠的情况。当前正式路径已经切换到 Inno Setup 6；构建后必须做临时安装、主 EXE 检查和卸载验证。
 
 ## 5. 当前技术结构
 
@@ -176,7 +180,7 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 - 调用 `faster-whisper`。
 - CPU/GPU 模型加载和回退。
 - 输出 TXT / MD / SRT / DOCX。
-- 处理无文字、停止、路径安全和模型下载提示。
+- 处理无文字、停止、路径安全、模型下载提示和用户级持久模型缓存。
 
 ### 5.3 `app/postprocess.py`
 
@@ -196,7 +200,7 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 - 源码 bat 路径可启动。
 - PyInstaller exe 曾验证可启动，窗口标题为 `南枫转写`。
 - 便携 zip 内含 exe、说明和 `_internal` 依赖。
-- 可点击安装 zip 内含 `南枫转写_Setup.exe` 和说明文件。
+- 可点击安装 zip 内含平台名明确的 Setup EXE 和中文优先的说明文件。
 - GPU 缺运行库时需要自动回退 CPU，而不是卡住。
 - 路径过长需要短文件名策略。
 
@@ -204,7 +208,8 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 
 - 真实长批量任务下，`medium` 模型首次下载和加载仍可能等待较久，必须保留明确状态反馈。
 - GPU 环境随机器差异大，不能承诺所有 Windows 机器可用 GPU。
-- 可点击安装包使用 IExpress 时稳定性不如 Inno/NSIS，正式分发建议优先换标准安装器。
+- 旧 IExpress 安装路径只保留历史回退；正式 Windows 安装构建使用 Inno Setup 6。
+- API、DPI 和 Inno 已建立自动/本机验证；真实 API 服务、真实多显示器 DPI 和全新 Windows 电脑仍是下一层验收。
 - “转写后翻译/润色”依赖外部文本 API，不能当作完全本地功能宣传。
 - Mac 版迁移不能照搬 Windows 路径、bat、exe、IExpress 或 `.dll` 检测逻辑。
 
@@ -275,5 +280,5 @@ DOCX 依赖 `python-docx`。如果缺依赖，应明确提示或自动安装，�
 - 便携 EXE 已本机启动验证，窗口标题确认是 `南枫转写`；检查后已关闭测试进程。
 - FFmpeg 和转写图标资源已包含在便携目录。
 - 首次性能版安装器存在通配符复制错误，未把主 EXE 写入安装目录；该文件不再作为交付版本。
-- 当前可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`，内含 `南枫转写_Setup.exe` 与 `Install-Readme.txt`，SHA-256 为 `EE86E9596AF081857877C8694973B7F8DA94D2FC916DE95EED089DAB2F5F4DB0`。
-- 使用安装器的真实 payload 做过无系统写入模拟：主 EXE 与 FFmpeg 均可复制到目标安装目录。尚未在本机执行实际安装，避免修改现有系统安装状态；文件未做数字签名，Windows 可能显示 SmartScreen 提示。
+- 当前可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.0_Setup_20260719_001129.zip`，内含平台名明确的 Setup EXE 与中文优先的 `安装说明.txt`，SHA-256 为 `17F4611F31CA3912D426CFB511364862D76F3835EF978FD61CBAFC03F7CD17B4`。
+- 已在独立临时目录执行真实安装，安装后的主 EXE 可启动且响应正常；随后完成静默卸载和目录清理。文件未做数字签名，Windows 可能显示 SmartScreen 提示。

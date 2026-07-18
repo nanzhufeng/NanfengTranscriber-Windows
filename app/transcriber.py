@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import gc
 import hashlib
+import json
 import math
 import os
 import subprocess
@@ -27,6 +28,23 @@ MODEL_REPOS = {
     "medium": "Systran/faster-whisper-medium",
     "large-v3": "Systran/faster-whisper-large-v3",
 }
+
+
+def default_model_cache_dir() -> Path:
+    override = os.environ.get("NANFENG_TRANSCRIBER_MODEL_DIR")
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "NanfengTranscriber" / "models"
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    if cache_home:
+        return Path(cache_home).expanduser() / "nanfeng-transcriber" / "models"
+    return Path.home() / ".cache" / "nanfeng-transcriber" / "models"
+
+
+def _model_cache_marker(cache_dir: Path, model_size: str) -> Path:
+    digest = hashlib.sha1(model_size.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return cache_dir / f".ready-{digest}.json"
 
 
 def _is_frozen_runtime() -> bool:
@@ -433,15 +451,55 @@ class TranscriptionSession:
 
         model_class, pipeline_class = self._backend_classes()
         target_name = "GPU" if device == "cuda" else "CPU"
+        cache_dir = default_model_cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        marker = _model_cache_marker(cache_dir, options.model_size)
+        cache_ready = marker.is_file()
         progress_callback(
             {
-                "status": "loading_model",
+                "status": "loading_model" if cache_ready else "downloading_model",
                 "progress": 3,
-                "eta": f"正在加载 {target_name} 模型",
-                "notice": f"正在准备 {options.model_size} 模型，当前队列后续文件将复用本次加载结果。",
+                "eta": f"正在加载 {target_name} 模型" if cache_ready else f"首次下载 {options.model_size} 模型",
+                "notice": (
+                    f"正在从本地缓存加载 {options.model_size} 模型。"
+                    if cache_ready
+                    else f"首次使用需要下载 {options.model_size} 模型，完成后将长期保存在本机。"
+                ),
             }
         )
-        model = model_class(options.model_size, device=device, compute_type=compute_type)
+        model_kwargs = {
+            "device": device,
+            "compute_type": compute_type,
+            "download_root": str(cache_dir),
+            "local_files_only": cache_ready,
+        }
+        try:
+            model = model_class(options.model_size, **model_kwargs)
+        except Exception:
+            if not cache_ready:
+                raise
+            marker.unlink(missing_ok=True)
+            progress_callback(
+                {
+                    "status": "downloading_model",
+                    "progress": 3,
+                    "eta": f"正在修复 {options.model_size} 模型缓存",
+                    "notice": "本地模型缓存不完整，正在联网修复；修复完成后仍会长期复用。",
+                }
+            )
+            model_kwargs["local_files_only"] = False
+            model = model_class(options.model_size, **model_kwargs)
+        marker.write_text(
+            json.dumps(
+                {
+                    "model": options.model_size,
+                    "repo": MODEL_REPOS.get(options.model_size, options.model_size),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         pipeline = pipeline_class(model=model) if device == "cuda" else None
         runtime = LoadedRuntime(model=model, pipeline=pipeline, device=device, compute_type=compute_type)
         self._runtimes[cache_key] = runtime

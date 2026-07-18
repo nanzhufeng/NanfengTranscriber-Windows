@@ -4,9 +4,11 @@
 
 新会话先读：
 
-1. `docs/CURRENT_HANDOFF.md`
-2. `docs/chatgpt-project-context.md`
-3. `git status --short`
+1. `docs/context.md`
+2. `docs/CURRENT_HANDOFF.md`
+3. `docs/development-experience-audit.md`
+4. `docs/chatgpt-project-context.md`
+5. `git status --short`
 
 再报告：当前进度、已修改文件、最近验证结果、下一件最小可验收任务。未确认新任务前，不改动代码。
 
@@ -15,6 +17,8 @@
 - 保持现有工作台 UI 和批量队列逻辑；不要重做成营销页面。
 - 所有表格默认居中，状态通过颜色和文案清晰区分。
 - 先源码验证，再打包；不要把源码验证写成安装包已验证。
+- 报告必须分开：已实现、自动测试、构建、真实 Windows/媒体/服务验证和待验证风险。
+- 重复出现的用户反馈应补契约测试或确定性检查，不能只更新说明文字。
 - 保留本地优先和可解释失败：依赖、模型下载、GPU、FFmpeg、路径和 API Key 都要给出可操作状态。
 - 不要用宽泛异常吞掉错误；对删除、覆盖、安装、系统状态变化和外部网络操作先说明影响。
 - Mac 迁移必须从源码开始，不能复用 Windows 的 EXE、IExpress、`.bat`、DLL 探测或 `D:` 路径。

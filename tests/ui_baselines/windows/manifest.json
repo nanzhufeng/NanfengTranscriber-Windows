@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "platform": "Windows",
+  "window": "南枫转写 - 转写工作台",
+  "capture_mode": "PySide6 offscreen fixed-state baseline",
+  "entries": [
+    {
+      "scale": 1.0,
+      "logical_width": 1820,
+      "logical_height": 1130,
+      "pixel_width": 1820,
+      "pixel_height": 1130,
+      "device_pixel_ratio": 1.0,
+      "file": "main-window-scale-1_0.png",
+      "sha256": "D76EABF66DF1E3F30CE6C1115F0CB108E1BFD05B5ABC520D0EB7D894915C30B5",
+      "bytes": 215945
+    },
+    {
+      "scale": 1.25,
+      "logical_width": 1820,
+      "logical_height": 1130,
+      "pixel_width": 2275,
+      "pixel_height": 1413,
+      "device_pixel_ratio": 1.25,
+      "file": "main-window-scale-1_25.png",
+      "sha256": "638B8FF04A98AF45BD3D0E760144F5CEB78AAB913F4295E804CB958377430DF5",
+      "bytes": 330763
+    },
+    {
+      "scale": 1.5,
+      "logical_width": 1820,
+      "logical_height": 1130,
+      "pixel_width": 2730,
+      "pixel_height": 1695,
+      "device_pixel_ratio": 1.5,
+      "file": "main-window-scale-1_5.png",
+      "sha256": "F5529B1270D1127FD6F810A383C5D06289197676AF53CF175474CDF2EEF01D0A",
+      "bytes": 402290
+    },
+    {
+      "scale": 2.0,
+      "logical_width": 1820,
+      "logical_height": 1130,
+      "pixel_width": 3640,
+      "pixel_height": 2260,
+      "device_pixel_ratio": 2.0,
+      "file": "main-window-scale-2_0.png",
+      "sha256": "D5DAB352BCA60E5635DE3BBF689CDA30EDD3944D006DDAB20ED45419E7053A58",
+      "bytes": 555947
+    }
+  ]
+}

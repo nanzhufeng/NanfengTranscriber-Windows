@@ -20,6 +20,9 @@ dist/
 dist_*/
 WindowsSetup_*/
 Windows*/
+!tests/ui_baselines/
+!tests/ui_baselines/windows/
+!tests/ui_baselines/windows/**
 *.exe
 *.zip
 *.pkg

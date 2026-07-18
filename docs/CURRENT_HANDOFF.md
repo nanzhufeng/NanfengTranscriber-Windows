@@ -1,15 +1,17 @@
 # 当前接手状态：南枫转写
 
-> 更新日期：2026-07-17
-> 适用分支：`main`（本次迁移建立的首个本地 Git 快照）  
+> 更新日期：2026-07-19
+> 适用分支：`main`（对应 GitHub Windows 仓库 `nanzhufeng/NanfengTranscriber-Windows`）
 > 当前平台事实：Windows 源码已验证；macOS 尚未实施。
 
 ## 先读什么
 
 1. `AGENTS.md`
-2. 本文件
-3. `docs/chatgpt-project-context.md`
-4. `git status --short`
+2. `docs/context.md`
+3. `docs/development-experience-audit.md`
+4. 本文件
+5. `docs/chatgpt-project-context.md`
+6. `git status --short`
 
 本项目不是视频下载器，也不是南枫记。不要从其他项目带入下载、登录、Android 或记账逻辑。
 
@@ -21,6 +23,7 @@
 - 模型选项按 `base -> small -> medium -> large-v3`；默认 `medium`，语言默认中文，模式默认 GPU 优先。
 - 既有结果处理：Yes 覆盖后继续；No 标记“已存在”并继续剩余任务。
 - 输出路径和文件名已做 Windows 长路径保护。
+- Whisper 模型成功下载后长期保存在 `%LOCALAPPDATA%\NanfengTranscriber\models`，跨软件启动、升级和重装复用；缓存损坏时自动联网修复。
 
 ## 最近完成：性能优化
 
@@ -34,8 +37,23 @@
 - 修复 PyInstaller 安装版点击“开始转写”后可能停在主线程、没有进入 Worker 的问题。
 - 冻结版不再通过 `find_spec` 扫描已打包依赖和外部 NVIDIA Python 包；保留 PATH 与系统 CUDA DLL 检测。
 - 新增冻结运行时回归测试，并为依赖扫描、GPU 检测和 Worker 启动增加诊断日志。
-- GitHub Windows 仓库固定命名为 `nanzhufeng/NanfengTranscriber-Windows`，首版使用 `v1.0.0`，当前安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260718_162709.zip`。
+- GitHub Windows 仓库固定命名为 `nanzhufeng/NanfengTranscriber-Windows`，首版使用 `v1.0.0`，当前重建安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260719_001129.zip`。
 - 跨平台仓库必须在名称中明确平台：Windows 使用 `NanfengTranscriber-Windows`，Android 使用 `NanfengTranscriber-Android`；应用内产品名统一为“南枫转写”。
+
+## 最近完成：正式开发经验沉淀
+
+- 新增 `docs/context.md`，作为当前技术栈、目录结构和工程事实入口。
+- 新增 `docs/development-experience-audit.md`，记录最终基准、反馈—原因—实现—验证矩阵、失败经验和遗留风险。
+- 新增已有结果回归测试，锁定“选择 No 跳过已有结果后继续剩余任务”的队列合同。
+- 更新用户级 `nanzhufeng-tool-standard`，补充批量媒体/本地 AI 运行时、性能、交付、正式复盘模板和 Release 合同检查脚本。
+
+## 最近完成：API、DPI、安装器与模型缓存
+
+- `app/postprocess.py` 已区分缺 Key、401/403 鉴权失败、请求超时、连接失败、空内容和格式异常；不再回显服务端原始响应。
+- 新增 100%、125%、150%、200% 四档 Windows UI 截图基线、生成脚本与 SHA-256 清单测试。
+- 新增 Inno Setup 6 工程和构建脚本；用户级 Inno 编译器路径和注册表路径均可自动发现。
+- Inno 安装器已在独立临时目录完成静默安装、主 EXE 检查、卸载和残留清理。
+- 模型缓存改为用户级持久目录；首次成功后写完成标记，后续强制本地加载，损坏时只联网修复一次。
 
 ## 最近验证
 
@@ -44,24 +62,28 @@
 - RTX 4090、`medium`、中文、GPU 优先、关闭润色、三个固定样本：`130.499 秒 -> 28.403 秒`，改善 `78.2%`。
 - CPU 稳定 / int8：25 秒真实样本完成，耗时 `6.906 秒`。
 - PyInstaller 性能版 EXE 已短暂启动，标题为 `南枫转写`。
-- 修复后的 Windows Setup 使用真实 payload 做过无系统写入模拟，主 EXE 与 FFmpeg 能复制到目标目录；尚未做实际安装。
+- 已从本轮最新源码重建 PyInstaller 目录，主 EXE 实际启动后标题正确且界面响应正常。
+- 新 Inno Setup 安装包已在独立临时目录完成静默安装、启动、卸载和残留清理。
 
 ### 已在自动化或源码层验证
 
-- `python -m unittest discover -s tests -v`：13 个测试通过。
+- `python -m unittest discover -s tests -v`：27 项通过，包含 API、DPI、Inno、中文安装说明和持久模型缓存回归。
 - `python -m compileall app tests tools`：通过。
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。
 - GitHub 首版 PyInstaller EXE 已启动验证：进程正常响应、标题正确，FFmpeg/FFprobe 均包含在运行目录中。
-- 当前安装 ZIP 已检查，仅包含 `南枫转写_Setup.exe` 与安装说明；ZIP SHA-256 为 `EE86E9596AF081857877C8694973B7F8DA94D2FC916DE95EED089DAB2F5F4DB0`。
+- 当前安装 ZIP 已检查，仅包含平台明确的 Setup EXE 与中文优先的 `安装说明.txt`；ZIP SHA-256 为 `17F4611F31CA3912D426CFB511364862D76F3835EF978FD61CBAFC03F7CD17B4`。
 
 ## 已知边界与风险
 
 1. 批量管线不能传中文 `initial_prompt`：faster-whisper 会将其注入每个批次窗口，实测会造成提示词泄漏和漏字。GPU 批量路径因此优先原始转写正确性。
 2. 批量原始转写不能保证繁体、英文、文言自动转为现代简体中文；需要时开启“翻译润色”并配置 API。
 3. 其他显卡、低显存设备与超长音频的实际批量降级和停止响应尚未实测。
-4. Windows Setup 仍未做代码签名，可能触发 SmartScreen；IExpress 只是现有兼容交付方案，不应当作 macOS 打包方案。
+4. Windows Setup 仍未做代码签名，可能触发 SmartScreen；正式构建入口已换为 Inno Setup，IExpress 仅保留历史回退。
 5. 当前 PyInstaller spec 引用了 `..\\JHlib\\ffmpeg`，该外部 Windows 依赖不在 Git 迁移包内。
+6. API 测试目前是模拟服务；真实 API 费用、限流和服务波动仍需单独验证。
+7. 多 DPI 基线为 offscreen 固定截图；真实多显示器跨屏缩放仍未验证。
+8. 新安装包尚未在全新、无 Python 和开发工具的 Windows 电脑上做外部验收。
 
 ## Mac 迁移的下一件最小任务
 

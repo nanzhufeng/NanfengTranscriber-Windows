@@ -11,18 +11,21 @@
 - 导出 TXT、Markdown、SRT、DOCX。
 - 可选的转写后翻译/润色模块。
 - 已有结果覆盖或跳过后继续处理。
+- 每个 Whisper 模型首次成功下载后长期复用，升级或重装软件不重复下载。
 
 ## 本版修复
 
 - 修复 PyInstaller 安装版点击“开始转写”后可能长时间无响应的问题。
 - 冻结版不再在界面主线程扫描已打包的 Python 依赖和 NVIDIA Python 包。
 - 保留 PATH 和系统 CUDA 运行库检测，并增加启动阶段日志。
+- 增加文本 API 鉴权、超时、空响应和异常响应回归。
+- Windows 安装器切换到 Inno Setup，安装说明优先使用中文。
 
 ## 安装说明
 
 1. 下载 Windows 安装包 ZIP。
 2. 完整解压 ZIP。
-3. 双击 `南枫转写_Setup.exe`。
+3. 双击 `NanfengTranscriber_Windows_v1.0.0_Setup_*.exe`。
 4. 首次运行某个模型时保持网络连接，等待模型下载完成。
 
 ## 已知边界
