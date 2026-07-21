@@ -2,6 +2,10 @@
 
 面向影视、动画与 VFX 工作流的本地优先批量音视频转写工具。项目基于 Python、PySide6、faster-whisper 和 FFmpeg，支持 Windows 本地转写、GPU/CPU 自动降级、批量队列与多格式导出。
 
+## 软件界面预览
+
+![南枫转写 Windows 软件界面预览](tests/ui_baselines/windows/main-window-scale-1_0.png)
+
 ## v1.0.0 功能
 
 - 批量添加视频、音频或整个文件夹，也支持拖放导入。

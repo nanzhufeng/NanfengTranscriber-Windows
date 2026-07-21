@@ -2,6 +2,10 @@
 
 这是项目的首个 GitHub 版本，提供 Windows 可点击安装包和完整源码。
 
+## 软件界面预览
+
+![南枫转写 Windows 软件界面预览](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/download/v1.0.0/NanfengTranscriber_Windows_UI_Preview.png)
+
 ## 主要功能
 
 - 批量导入视频、音频和文件夹，支持拖放。

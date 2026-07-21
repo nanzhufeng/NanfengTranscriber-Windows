@@ -180,6 +180,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_installer_in
 - CPU `int8` 对 25 秒样本完成转写，耗时 `6.906 秒`。
 - PyInstaller EXE 可启动、界面响应正常、标题正确。
 - Windows v1.0.0 新安装 ZIP 已完成本机构建和验收，SHA-256 为 `17F4611F31CA3912D426CFB511364862D76F3835EF978FD61CBAFC03F7CD17B4`。
+- GitHub README 和 Release 默认展示当前版本的软件界面预览；预览图使用无隐私内容的固定 UI 基线，Release 资产名为 `NanfengTranscriber_Windows_UI_Preview.png`。
 
 ### 已自动化验证
 
