@@ -12,8 +12,8 @@
       "pixel_height": 1130,
       "device_pixel_ratio": 1.0,
       "file": "main-window-scale-1_0.png",
-      "sha256": "D76EABF66DF1E3F30CE6C1115F0CB108E1BFD05B5ABC520D0EB7D894915C30B5",
-      "bytes": 215945
+      "sha256": "CC148A2327A642FC1A52934F2761FA22835A3F16A43636ADB5A2D840EB2F1BBF",
+      "bytes": 222674
     },
     {
       "scale": 1.25,
@@ -23,8 +23,8 @@
       "pixel_height": 1413,
       "device_pixel_ratio": 1.25,
       "file": "main-window-scale-1_25.png",
-      "sha256": "638B8FF04A98AF45BD3D0E760144F5CEB78AAB913F4295E804CB958377430DF5",
-      "bytes": 330763
+      "sha256": "D314CE40820D673857857E70131CFC7389CC8702C595B4C34B22E8E8610D0735",
+      "bytes": 339350
     },
     {
       "scale": 1.5,
@@ -34,8 +34,8 @@
       "pixel_height": 1695,
       "device_pixel_ratio": 1.5,
       "file": "main-window-scale-1_5.png",
-      "sha256": "F5529B1270D1127FD6F810A383C5D06289197676AF53CF175474CDF2EEF01D0A",
-      "bytes": 402290
+      "sha256": "0B9EF9E325FE4F4E9D1E4704B780303B3AE97D9D828228A46986CC5DECFAE83D",
+      "bytes": 416027
     },
     {
       "scale": 2.0,
@@ -45,8 +45,8 @@
       "pixel_height": 2260,
       "device_pixel_ratio": 2.0,
       "file": "main-window-scale-2_0.png",
-      "sha256": "D5DAB352BCA60E5635DE3BBF689CDA30EDD3944D006DDAB20ED45419E7053A58",
-      "bytes": 555947
+      "sha256": "4274DEF3CBD673F42915F14165AA846CDE60191893B50D66AD44A22B1F8B5E2D",
+      "bytes": 573758
     }
   ]
 }

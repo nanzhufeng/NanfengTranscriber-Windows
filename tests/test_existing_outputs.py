@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app import main
@@ -24,7 +25,8 @@ class ExistingOutputFlowTests(unittest.TestCase):
             source_existing.touch()
             source_pending.touch()
 
-            window = main.MainWindow()
+            settings = QSettings(str(root / "settings.ini"), QSettings.IniFormat)
+            window = main.MainWindow(settings=settings)
             window.output_edit.setText(str(root / "outputs"))
             window.compute_mode_combo.setCurrentText("CPU 稳定")
             window.txt_check.setChecked(True)

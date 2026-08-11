@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from app import main
@@ -44,7 +45,8 @@ class FrozenRuntimeTests(unittest.TestCase):
 
     def test_start_reaches_worker_in_frozen_runtime(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            window = main.MainWindow()
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            window = main.MainWindow(settings=settings)
             window.output_edit.setText(temp_dir)
             with patch("app.main.probe_duration_seconds", return_value=0):
                 window._add_row(Path(temp_dir) / "sample.mp4")

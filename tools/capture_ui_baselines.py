@@ -30,6 +30,7 @@ def _capture(scale: float, output: Path, info_path: Path) -> None:
     os.environ["QT_SCALE_FACTOR"] = str(scale)
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 
+    from PySide6.QtCore import QSettings
     from PySide6.QtGui import QFontDatabase
     from PySide6.QtWidgets import QApplication
 
@@ -42,10 +43,6 @@ def _capture(scale: float, output: Path, info_path: Path) -> None:
     ):
         if font_path.exists():
             QFontDatabase.addApplicationFont(str(font_path))
-    window = main.MainWindow()
-    window.resize(*LOGICAL_SIZE)
-    window.output_edit.setText(r"D:\南枫转写\输出示例")
-
     rows = [
         ("等待", "0%", "-", "-"),
         ("提取音频", "2%", "1秒", "正在提取音频"),
@@ -62,6 +59,11 @@ def _capture(scale: float, output: Path, info_path: Path) -> None:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)
+        # 截图基线不能读取或写入用户的真实上次设置。
+        settings = QSettings(str(temp_root / "ui-baseline.ini"), QSettings.IniFormat)
+        window = main.MainWindow(settings=settings)
+        window.resize(*LOGICAL_SIZE)
+        window.output_edit.setText(r"D:\南枫转写\输出示例")
         with patch("app.main.probe_duration_seconds", return_value=604.0):
             for index, (status, progress, elapsed, eta) in enumerate(rows, start=1):
                 source = temp_root / f"{index:02d}_多DPI界面基线示例_完整文件名_{status}.mp4"

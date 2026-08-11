@@ -1,6 +1,6 @@
 # 当前接手状态：南枫转写
 
-> 更新日期：2026-07-19
+> 更新日期：2026-08-11
 > 适用分支：`main`（对应 GitHub Windows 仓库 `nanzhufeng/NanfengTranscriber-Windows`）
 > 当前平台事实：Windows 源码已验证；macOS 尚未实施。
 
@@ -37,7 +37,7 @@
 - 修复 PyInstaller 安装版点击“开始转写”后可能停在主线程、没有进入 Worker 的问题。
 - 冻结版不再通过 `find_spec` 扫描已打包依赖和外部 NVIDIA Python 包；保留 PATH 与系统 CUDA DLL 检测。
 - 新增冻结运行时回归测试，并为依赖扫描、GPU 检测和 Worker 启动增加诊断日志。
-- GitHub Windows 仓库固定命名为 `nanzhufeng/NanfengTranscriber-Windows`，首版使用 `v1.0.0`，当前重建安装资产为 `NanfengTranscriber_Windows_v1.0.0_Setup_20260719_001129.zip`。
+- GitHub Windows 仓库固定命名为 `nanzhufeng/NanfengTranscriber-Windows`；首版为 `v1.0.0`，下一次正式发布目标为 `v1.0.1`（设置记忆、逐项定位、结束反馈）。
 - 跨平台仓库必须在名称中明确平台：Windows 使用 `NanfengTranscriber-Windows`，Android 使用 `NanfengTranscriber-Android`；应用内产品名统一为“南枫转写”。
 
 ## 最近完成：正式开发经验沉淀
@@ -55,6 +55,22 @@
 - Inno 安装器已在独立临时目录完成静默安装、主 EXE 检查、卸载和残留清理。
 - 模型缓存改为用户级持久目录；首次成功后写完成标记，后续强制本地加载，损坏时只联网修复一次。
 
+## 最近完成：设置记忆、逐项定位与结束反馈
+
+- 保存位置、模型、语言、GPU/CPU 模式、TXT/Markdown/SRT/DOCX 和翻译润色选项已通过用户级 `QSettings` 持久化，重启后恢复上次设置；转写队列本身不持久化。
+- 列表最右侧新增居中的“定位”图标按钮：完成后优先在文件管理器中选中实际导出文件，尚未导出时定位源媒体文件。
+- 转写批次结束后显示结果摘要：全部成功为绿色提示，存在失败或无文字时为红色提示，主动停止使用中性提示。
+- 源媒体路径与实际导出文件路径已拆分为独立数据角色，错误文本不再覆盖定位依据。
+- Windows 定位调用使用 `explorer.exe /select, <完整路径>` 的独立参数形式，避免中文或空格路径被 Explorer 误解析。
+- 结束反馈改为“转写结果”统计面板，按成功、失败、跳过、停止分色统计，跳过已有结果会计入本次汇总。
+
+## 待发布：Windows v1.0.1
+
+- 目标标签：`v1.0.1`；应用内产品名保持“南枫转写”，仓库与发布资产明确标注 Windows。
+- 已生成可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.1_Setup_20260811_234023.zip`。
+- ZIP SHA-256：`133D5E4CCC4D2D9705B6A932E0B7F3C83E5ED088FF3CC4AE2099AC637E75DE92`。
+- 已验证 ZIP 内容仅含 Setup EXE 与中文优先的 `安装说明.txt`；已在独立临时目录静默安装、主 EXE 启动、卸载并确认无残留文件。
+
 ## 最近验证
 
 ### 已在真实 Windows 环境验证
@@ -67,12 +83,13 @@
 
 ### 已在自动化或源码层验证
 
-- `python -m unittest discover -s tests -v`：27 项通过，包含 API、DPI、Inno、中文安装说明和持久模型缓存回归。
+- `python -m unittest discover -s tests -v`：31 项通过，包含 API、DPI、Inno、中文安装说明、持久模型缓存、设置记忆、逐项定位和结束反馈回归。
 - `python -m compileall app tests tools`：通过。
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。
+- `启动南枫转写_Windows_源码测试.bat` 冒烟通过：Python 进程保持运行，日志写入 `app started`，未闪退；新增定位列已完成 offscreen 布局检查。
 - GitHub 首版 PyInstaller EXE 已启动验证：进程正常响应、标题正确，FFmpeg/FFprobe 均包含在运行目录中。
-- 当前安装 ZIP 已检查，仅包含平台明确的 Setup EXE 与中文优先的 `安装说明.txt`；ZIP SHA-256 为 `17F4611F31CA3912D426CFB511364862D76F3835EF978FD61CBAFC03F7CD17B4`。
+- 当前待发布安装 ZIP 已检查，仅包含平台明确的 Setup EXE 与中文优先的 `安装说明.txt`；ZIP SHA-256 见“待发布：Windows v1.0.1”。
 
 ## 已知边界与风险
 

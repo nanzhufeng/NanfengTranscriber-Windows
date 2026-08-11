@@ -6,7 +6,7 @@
 
 ![南枫转写 Windows 软件界面预览](tests/ui_baselines/windows/main-window-scale-1_0.png)
 
-## v1.0.0 功能
+## v1.0.1 功能
 
 - 批量添加视频、音频或整个文件夹，也支持拖放导入。
 - 使用 faster-whisper 的 `base`、`small`、`medium`、`large-v3` 模型，默认 `medium`。
@@ -17,6 +17,8 @@
 - 可选调用文本 API，将转写稿翻译、整理为现代简体中文。
 - 显示逐项状态、进度、耗时、剩余时间、输出路径和总进度。
 - 已有结果可选择覆盖，或跳过后继续处理剩余任务。
+- 保存位置、模型、语言、GPU/CPU 模式、导出格式与翻译润色开关会在重启后恢复。
+- 每条任务可直接定位源媒体或实际导出文件；批次结束后显示按成功、失败、跳过和停止分色的结果摘要。
 
 ## Windows 安装
 
@@ -44,7 +46,7 @@ API 鉴权失败、请求超时、空响应和异常响应格式均有独立错�
 
 ## 当前验证状态
 
-- 自动化测试覆盖已有结果续跑、API 鉴权/超时/空响应、模型持久缓存、Inno 安装器合同和四档 DPI 截图基线。
+- 自动化测试覆盖已有结果续跑、API 鉴权/超时/空响应、模型持久缓存、设置记忆、逐项定位、结束反馈、Inno 安装器合同和四档 DPI 截图基线。
 - Windows RTX 4090 固定三样本基准中，队列耗时从 130.499 秒降至 28.403 秒。
 - macOS 版本尚未实现；迁移要求见 `docs/MAC_CODEX_START_PROMPT.md`。
 - 当前技术栈、目录结构与工程事实见 `docs/context.md`；正式经验审计见 `docs/development-experience-audit.md`；动态开发状态见 `docs/CURRENT_HANDOFF.md`；产品与历史经验见 `docs/chatgpt-project-context.md`。

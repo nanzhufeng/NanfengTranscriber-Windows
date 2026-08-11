@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QRect, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QRect, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QCheckBox,
     QComboBox,
+    QDialog,
     QProgressBar,
     QProgressDialog,
     QStyle,
@@ -105,6 +106,10 @@ COL_PROGRESS = 7
 COL_ELAPSED = 8
 COL_ETA = 9
 COL_OUTPUT = 10
+COL_LOCATE = 11
+
+SOURCE_PATH_ROLE = Qt.UserRole
+OUTPUT_FILE_ROLE = Qt.UserRole + 1
 
 
 class CenteredCheckBoxDelegate(QStyledItemDelegate):
@@ -138,6 +143,103 @@ class CenteredCheckBoxDelegate(QStyledItemDelegate):
             else QStyle.State_Off
         )
         style.drawPrimitive(QStyle.PE_IndicatorItemViewItemCheck, checkbox_option, painter, option.widget)
+
+
+class CompletionResultDialog(QDialog):
+    """批量转写结束后的结果面板，避免把完成信息淹没在底部状态栏中。"""
+
+    def __init__(self, parent: QWidget, summary: dict[str, int]) -> None:
+        super().__init__(parent)
+        success = summary.get("success", 0)
+        failed = summary.get("failed", 0) + summary.get("no_text", 0)
+        skipped = summary.get("skipped", 0)
+        stopped = summary.get("stopped", 0)
+        has_failure = failed > 0
+        stopped_only = stopped > 0 and success == 0 and failed == 0
+
+        self.setWindowTitle("转写结果")
+        self.setModal(True)
+        self.setMinimumWidth(470)
+        self.setStyleSheet(
+            "QDialog { background: #ffffff; }"
+            "QLabel#ResultTitle { font-size: 19px; font-weight: 800; }"
+            "QLabel#ResultSubtitle, QLabel#ResultHint { color: #55707a; }"
+            "QFrame#ResultStat { border-radius: 8px; }"
+            "QLabel#ResultNumber { font-size: 21px; font-weight: 800; }"
+            "QLabel#ResultLabel { font-size: 12px; font-weight: 700; }"
+            "QPushButton#ResultClose { min-width: 126px; background: #2563eb; color: #ffffff; "
+            "border: 1px solid #2563eb; border-radius: 6px; padding: 10px 22px; font-weight: 800; }"
+            "QPushButton#ResultClose:hover { background: #1d4ed8; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 22)
+        layout.setSpacing(12)
+
+        if has_failure:
+            title_text, title_color = "转写已结束，存在失败", "#dc2626"
+            hint = "失败项目保留在队列中，可调整设置后重新勾选转写。"
+        elif stopped_only:
+            title_text, title_color = "转写已停止", "#475569"
+            hint = "未完成项目保留在队列中，可重新勾选后继续转写。"
+        else:
+            title_text, title_color = "转写全部完成", "#16a34a"
+            hint = "可在列表最右侧点击定位，快速查看对应的导出文件。"
+
+        title = QLabel(title_text)
+        title.setObjectName("ResultTitle")
+        title.setStyleSheet(f"color: {title_color};")
+        title.setAlignment(Qt.AlignCenter)
+        subtitle = QLabel(f"本次处理 {success + failed + skipped + stopped} 项，请查看成功与失败结果。")
+        subtitle.setObjectName("ResultSubtitle")
+        subtitle.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        stats = QHBoxLayout()
+        stats.setSpacing(10)
+        for number, label, background, foreground, border in (
+            (success, "成功", "#ecfdf3", "#15803d", "#bbf7d0"),
+            (failed, "失败", "#fef2f2", "#dc2626", "#fecaca"),
+            (skipped, "跳过", "#eff6ff", "#475569", "#cbd5e1"),
+            (stopped, "停止", "#fff7ed", "#c2410c", "#fed7aa"),
+        ):
+            card = QFrame()
+            card.setObjectName("ResultStat")
+            # 使用带选择器的样式，避免外层卡片边框继承到内部数字和标签。
+            card.setStyleSheet(
+                f"QFrame#ResultStat {{ background: {background}; border: 1px solid {border}; }}"
+                "QFrame#ResultStat QLabel { background: transparent; border: none; }"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 8, 10, 8)
+            card_layout.setSpacing(2)
+            number_label = QLabel(str(number))
+            number_label.setObjectName("ResultNumber")
+            number_label.setStyleSheet(f"color: {foreground};")
+            number_label.setAlignment(Qt.AlignCenter)
+            label_widget = QLabel(label)
+            label_widget.setObjectName("ResultLabel")
+            label_widget.setStyleSheet(f"color: {foreground};")
+            label_widget.setAlignment(Qt.AlignCenter)
+            card_layout.addWidget(number_label)
+            card_layout.addWidget(label_widget)
+            stats.addWidget(card, 1)
+        layout.addLayout(stats)
+
+        hint_label = QLabel(hint)
+        hint_label.setObjectName("ResultHint")
+        hint_label.setWordWrap(True)
+        hint_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(hint_label)
+
+        close_button = QPushButton("关闭")
+        close_button.setObjectName("ResultClose")
+        close_button.clicked.connect(self.accept)
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_row.addWidget(close_button)
+        close_row.addStretch(1)
+        layout.addLayout(close_row)
 
 
 class CenterComboBox(QComboBox):
@@ -269,8 +371,9 @@ class DependencyInstallWorker(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, settings: QSettings | None = None) -> None:
         super().__init__()
+        self.settings = settings if settings is not None else QSettings("Nanzhufeng", "NanfengTranscriber")
         self.project_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
         self.ffmpeg_dir = find_ffmpeg_dir(self.project_root)
         self.runtime_log_path = self.project_root / "runtime-log.txt"
@@ -281,6 +384,8 @@ class MainWindow(QMainWindow):
         self.install_progress: QProgressDialog | None = None
         self.start_after_install = False
         self.active_rows: set[int] = set()
+        self.current_run_skipped_count = 0
+        self.pending_completion_summary: dict[str, int] | None = None
         self.started_at: float | None = None
         self.check_drag_active = False
         self.check_drag_state = Qt.Unchecked
@@ -294,10 +399,73 @@ class MainWindow(QMainWindow):
         self.resize(1820, 1130)
         self.setAcceptDrops(True)
         self._build_ui()
+        self._restore_settings()
+        self._connect_settings_signals()
         self._apply_style()
         self._lock_add_button_widths()
         self._update_status()
         self._debug_log("app started")
+
+    @staticmethod
+    def _setting_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _restore_combo_setting(self, combo: QComboBox, key: str, default: str) -> None:
+        value = str(self.settings.value(key, default))
+        combo.setCurrentText(value if combo.findText(value) >= 0 else default)
+
+    def _restore_settings(self) -> None:
+        self.output_edit.setText(str(self.settings.value("transcription/output_dir", str(default_output_dir()))))
+        self._restore_combo_setting(self.model_combo, "transcription/model", "medium")
+        self._restore_combo_setting(self.language_combo, "transcription/language", "中文")
+        self._restore_combo_setting(self.compute_mode_combo, "transcription/compute_mode", "GPU 优先")
+        defaults = {
+            "export_txt": True,
+            "export_md": True,
+            "export_srt": True,
+            "export_docx": True,
+            "polish": bool(os.environ.get("NANZHU_TEXT_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+        }
+        for key, checkbox in {
+            "export_txt": self.txt_check,
+            "export_md": self.md_check,
+            "export_srt": self.srt_check,
+            "export_docx": self.docx_check,
+            "polish": self.polish_check,
+        }.items():
+            checkbox.setChecked(self._setting_bool(self.settings.value(f"transcription/{key}"), defaults[key]))
+
+    def _connect_settings_signals(self) -> None:
+        self.output_edit.editingFinished.connect(self._save_settings)
+        for combo in (self.model_combo, self.language_combo, self.compute_mode_combo):
+            combo.currentTextChanged.connect(self._save_settings)
+        for checkbox in (self.txt_check, self.md_check, self.srt_check, self.docx_check, self.polish_check):
+            checkbox.toggled.connect(self._save_settings)
+
+    @Slot()
+    def _save_settings(self) -> None:
+        values = {
+            "output_dir": self.output_edit.text().strip(),
+            "model": self.model_combo.currentText(),
+            "language": self.language_combo.currentText(),
+            "compute_mode": self.compute_mode_combo.currentText(),
+            "export_txt": self.txt_check.isChecked(),
+            "export_md": self.md_check.isChecked(),
+            "export_srt": self.srt_check.isChecked(),
+            "export_docx": self.docx_check.isChecked(),
+            "polish": self.polish_check.isChecked(),
+        }
+        for key, value in values.items():
+            self.settings.setValue(f"transcription/{key}", value)
+        self.settings.sync()
+
+    def closeEvent(self, event) -> None:
+        self._save_settings()
+        super().closeEvent(event)
 
     def _asset_path(self, name: str) -> Path:
         packaged_asset = self.project_root / "app" / "assets" / name
@@ -500,8 +668,8 @@ class MainWindow(QMainWindow):
         action_layout.addStretch(1)
         layout.addWidget(action_frame)
 
-        self.table = QTableWidget(0, 11)
-        self.table.setHorizontalHeaderLabels(["序号", "选择", "状态", "文件名", "时长", "语言", "模型", "进度", "耗时", "剩余", "输出路径"])
+        self.table = QTableWidget(0, 12)
+        self.table.setHorizontalHeaderLabels(["序号", "选择", "状态", "文件名", "时长", "语言", "模型", "进度", "耗时", "剩余", "输出路径", "定位"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
@@ -520,6 +688,7 @@ class MainWindow(QMainWindow):
             COL_PROGRESS: 72,
             COL_ELAPSED: 78,
             COL_ETA: 150,
+            COL_LOCATE: 70,
         }.items():
             header.setSectionResizeMode(column, QHeaderView.Fixed)
             self.table.setColumnWidth(column, width)
@@ -628,6 +797,8 @@ class MainWindow(QMainWindow):
             QPushButton#ClearButton { background: #f3f7f9; border: 1px solid #d5e3e7; color: #42545b; font-weight: 800; }
             QPushButton#SelectButton { background: #e9fbf4; border: 1px solid #b8ead7; color: #047857; font-weight: 800; }
             QPushButton#InvertButton { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: 800; }
+            QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: #eefdf8; border: 1px solid #b8ead7; }
+            QPushButton#LocateButton:hover { background: #d9fbf3; border: 1px solid #5eead4; }
             QTableWidget { background: #ffffff; alternate-background-color: #f6fbfc; border: 1px solid #d7e7ea; border-radius: 8px; gridline-color: #e6f0f2; selection-background-color: #e0f2fe; selection-color: #0f172a; }
             QHeaderView::section { background: #e9f4f6; color: #38545c; padding: 10px 8px; border: none; border-right: 1px solid #d7e7ea; font-weight: 800; }
             QProgressBar { background: #e7f1f3; border: 1px solid #cfe3e6; border-radius: 6px; height: 16px; text-align: center; color: #253f46; }
@@ -699,6 +870,7 @@ class MainWindow(QMainWindow):
         directory = QFileDialog.getExistingDirectory(self, "选择保存位置", self.output_edit.text())
         if directory:
             self.output_edit.setText(directory)
+            self._save_settings()
 
     def _open_output_dir(self) -> None:
         path = Path(self.output_edit.text()).expanduser()
@@ -729,7 +901,11 @@ class MainWindow(QMainWindow):
 
     def _add_paths(self, paths: list[Path]) -> None:
         media_paths = self._expand_media_paths(paths)
-        existing = {self.table.item(row, COL_OUTPUT).data(Qt.UserRole) for row in range(self.table.rowCount()) if self.table.item(row, COL_OUTPUT)}
+        existing = {
+            self.table.item(row, COL_OUTPUT).data(SOURCE_PATH_ROLE)
+            for row in range(self.table.rowCount())
+            if self.table.item(row, COL_OUTPUT)
+        }
         progress = QProgressDialog("正在读取文件信息...", "取消", 0, max(len(media_paths), 1), self)
         progress.setWindowTitle("添加文件")
         progress.setWindowModality(Qt.ApplicationModal)
@@ -768,7 +944,66 @@ class MainWindow(QMainWindow):
         self._set_cell(row, COL_ELAPSED, "-")
         self._set_cell(row, COL_ETA, "-")
         output_item = self._set_cell(row, COL_OUTPUT, str(Path(self.output_edit.text()) / safe_output_stem(path.stem)))
-        output_item.setData(Qt.UserRole, str(path.resolve()))
+        output_item.setData(SOURCE_PATH_ROLE, str(path.resolve()))
+        self._set_locate_button(row)
+
+    def _set_locate_button(self, row: int) -> None:
+        button = QPushButton()
+        button.setObjectName("LocateButton")
+        button.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
+        button.setToolTip("在文件管理器中定位当前文件")
+        button.setAccessibleName(f"定位第 {row + 1} 个文件")
+        button.clicked.connect(lambda _checked=False, row=row: self._locate_row_file(row))
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.addWidget(button)
+        self.table.setCellWidget(row, COL_LOCATE, container)
+
+    def _update_output_cell(self, row: int, text: str, output_file: Path | None = None) -> QTableWidgetItem:
+        previous = self.table.item(row, COL_OUTPUT)
+        source_path = previous.data(SOURCE_PATH_ROLE) if previous else None
+        previous_output = previous.data(OUTPUT_FILE_ROLE) if previous else None
+        item = self._set_cell(row, COL_OUTPUT, text)
+        if source_path:
+            item.setData(SOURCE_PATH_ROLE, source_path)
+        if output_file is not None:
+            item.setData(OUTPUT_FILE_ROLE, str(output_file.resolve()))
+        elif previous_output:
+            item.setData(OUTPUT_FILE_ROLE, previous_output)
+        return item
+
+    def _locate_target_for_row(self, row: int) -> Path | None:
+        output_item = self.table.item(row, COL_OUTPUT)
+        if not output_item:
+            return None
+        output_value = output_item.data(OUTPUT_FILE_ROLE)
+        source_value = output_item.data(SOURCE_PATH_ROLE)
+        for value in (output_value, source_value):
+            if value:
+                path = Path(str(value))
+                if path.exists():
+                    return path
+        return None
+
+    def _locate_row_file(self, row: int) -> None:
+        target = self._locate_target_for_row(row)
+        if target is None:
+            QMessageBox.warning(self, "无法定位文件", "源文件和导出文件均不存在，可能已被移动或删除。")
+            return
+        try:
+            if target.is_dir():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+            elif sys.platform == "win32":
+                # Explorer 需要把 /select, 与实际路径拆成两个参数；合并后中文或空格路径会被误解析。
+                subprocess.Popen(["explorer.exe", "/select,", os.path.normpath(str(target))])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", str(target)])
+            else:
+                subprocess.Popen(["xdg-open", str(target.parent)])
+        except OSError as exc:
+            QMessageBox.warning(self, "无法定位文件", f"文件管理器启动失败：{exc}")
 
     def _build_preview_options(self) -> TranscribeOptions:
         return TranscribeOptions(
@@ -940,6 +1175,7 @@ class MainWindow(QMainWindow):
 
         filtered_items = [item for item in items if item.row not in item_existing]
         skipped_count = len(items) - len(filtered_items)
+        self.current_run_skipped_count += skipped_count
         self._debug_log(f"existing outputs: selected={len(items)}, skipped={skipped_count}, remaining={len(filtered_items)}")
         for item in items:
             if item.row in item_existing:
@@ -947,7 +1183,11 @@ class MainWindow(QMainWindow):
                 self._set_cell(item.row, COL_PROGRESS, "100%")
                 self._set_cell(item.row, COL_ELAPSED, "-")
                 self._set_cell(item.row, COL_ETA, "0秒")
-                self._set_cell(item.row, COL_OUTPUT, str(item_existing[item.row][0].parent))
+                self._update_output_cell(
+                    item.row,
+                    str(item_existing[item.row][0].parent),
+                    item_existing[item.row][0],
+                )
 
         self.status_label.setText(f"已跳过 {skipped_count} 个已有结果，继续处理剩余 {len(filtered_items)} 个。")
         if not filtered_items:
@@ -1049,7 +1289,7 @@ class MainWindow(QMainWindow):
                 model_widget = self.table.cellWidget(row, COL_MODEL)
                 items.append(
                     QueueItem(
-                        path=Path(output_item.data(Qt.UserRole)),
+                        path=Path(output_item.data(SOURCE_PATH_ROLE)),
                         row=row,
                         model_size=model_widget.currentText() if isinstance(model_widget, QComboBox) else self.model_combo.currentText(),
                         language=language_widget.currentText() if isinstance(language_widget, QComboBox) else self.language_combo.currentText(),
@@ -1072,6 +1312,7 @@ class MainWindow(QMainWindow):
             self._debug_log("start aborted: empty table")
             QMessageBox.information(self, "队列为空", "请先添加视频或音频文件。")
             return
+        self.current_run_skipped_count = 0
         options = self._build_options()
         if not options:
             self._debug_log("start aborted: build options failed")
@@ -1251,7 +1492,7 @@ class MainWindow(QMainWindow):
         self._set_status_cell(row, "完成")
         self._set_cell(row, COL_PROGRESS, "100%")
         if result.files:
-            self._set_cell(row, COL_OUTPUT, str(result.files[0].parent))
+            self._update_output_cell(row, str(result.files[0].parent), result.files[0])
         self._update_main_progress()
 
     @Slot(int, str)
@@ -1262,19 +1503,19 @@ class MainWindow(QMainWindow):
             self._set_status_cell(row, "无文字")
             self._set_cell(row, COL_PROGRESS, "100%")
             self._set_cell(row, COL_ETA, "0秒")
-            self._set_cell(row, COL_OUTPUT, message)
+            self._update_output_cell(row, message)
             self.status_label.setText(message)
             self._update_main_progress()
             return
         if "WinError 206" in error or "文件名或扩展名太长" in error:
             message = "路径过长。已优化为短文件名规则，请重启软件后重新转写这些失败项。"
             self._set_status_cell(row, "失败")
-            self._set_cell(row, COL_OUTPUT, message)
+            self._update_output_cell(row, message)
             self.status_label.setText(message)
             self._update_main_progress()
             return
         self._set_status_cell(row, "失败")
-        self._set_cell(row, COL_OUTPUT, error[:160])
+        self._update_output_cell(row, error[:160])
         self._update_main_progress()
 
     @Slot(int)
@@ -1286,6 +1527,20 @@ class MainWindow(QMainWindow):
     def _on_all_done(self) -> None:
         self._debug_log("all done")
         self.status_label.setText("转写任务已结束。")
+        rows = sorted(self.active_rows)
+        if rows:
+            statuses = [
+                self.table.item(row, COL_STATUS).text()
+                for row in rows
+                if self.table.item(row, COL_STATUS)
+            ]
+            self.pending_completion_summary = {
+                "success": statuses.count("完成"),
+                "failed": statuses.count("失败"),
+                "no_text": statuses.count("无文字"),
+                "skipped": self.current_run_skipped_count,
+                "stopped": statuses.count("已停止"),
+            }
         self.active_rows.clear()
         self.started_at = None
         self.total_eta_label.setText("总剩余：0秒")
@@ -1300,6 +1555,13 @@ class MainWindow(QMainWindow):
         self.add_files_button.setEnabled(True)
         self.add_folder_button.setEnabled(True)
         self._update_status()
+        summary = self.pending_completion_summary
+        self.pending_completion_summary = None
+        if summary:
+            QTimer.singleShot(0, lambda summary=summary: self._show_completion_dialog(summary))
+
+    def _show_completion_dialog(self, summary: dict[str, int]) -> None:
+        CompletionResultDialog(self, summary).exec()
 
     def _update_main_progress(self) -> None:
         rows = sorted(self.active_rows) if self.active_rows else list(range(self.table.rowCount()))
