@@ -21,8 +21,6 @@ if (-not $sourceAppDir) {
     throw ('No application folder with matching exe was found in: ' + $releaseDir.FullName)
 }
 
-$appName = $sourceAppDir.Name
-
 $isccCandidates = @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
@@ -90,23 +88,10 @@ if ((Get-Item -LiteralPath $setupExe).Length -lt 1MB) {
     throw ('The generated installer is unexpectedly small: ' + $setupExe)
 }
 
-$readme = Join-Path $outputDir ([string]::Concat([char]0x5B89, [char]0x88C5, [char]0x8BF4, [char]0x660E, '.txt'))
-$readmeTemplatePath = Join-Path $projectDir 'installer\Install-Readme.zh-CN.txt'
-$readmeContent = [System.IO.File]::ReadAllText($readmeTemplatePath, [System.Text.UTF8Encoding]::new($false))
-$readmeContent = $readmeContent.Replace('{{VERSION}}', $Version)
-$readmeContent = $readmeContent.Replace('{{SETUP_EXE}}', ($outputBaseName + '.exe'))
-$readmeContent = $readmeContent.Replace('{{APP_NAME}}', $appName)
-[System.IO.File]::WriteAllText($readme, $readmeContent, [System.Text.UTF8Encoding]::new($true))
-
-$zipPath = Join-Path $projectDir ($outputBaseName + '.zip')
-Compress-Archive -LiteralPath $setupExe, $readme -DestinationPath $zipPath -Force
-
 [pscustomobject]@{
     Compiler = $iscc
     SourceApp = $sourceAppDir.FullName
     InstallerExe = $setupExe
-    ZipPackage = $zipPath
     InstallerBytes = (Get-Item -LiteralPath $setupExe).Length
-    ZipBytes = (Get-Item -LiteralPath $zipPath).Length
-    Sha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    Sha256 = (Get-FileHash -LiteralPath $setupExe -Algorithm SHA256).Hash
 } | Format-List

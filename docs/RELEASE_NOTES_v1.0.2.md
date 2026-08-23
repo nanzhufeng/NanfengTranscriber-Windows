@@ -10,9 +10,9 @@
 
 ## 安装
 
-下载 `NanfengTranscriber_Windows_v1.0.2_Setup_*.zip`，完整解压后双击其中的 `Setup_*.exe` 安装。
+直接下载 `NanfengTranscriber_Windows_v1.0.2_Setup_*.exe`，双击安装。
 
-首次使用某个 Whisper 模型需要联网下载；模型会保存在本机用户缓存，后续启动自动复用。安装说明以中文为主，英文说明附在文末。
+首次使用某个 Whisper 模型需要联网下载；模型会保存在本机用户缓存，后续启动自动复用。Release 仅提供安装程序本体，安装说明以 README 的中文内容为准。
 
 ## 验证
 

@@ -11,7 +11,7 @@
 - Windows 仓库：`nanzhufeng/NanfengTranscriber-Windows`（Private）
 - Android 预留命名：`nanzhufeng/NanfengTranscriber-Android`
 - Windows Release：`南枫转写 Windows v1.0.2`
-- 当前安装资产：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.zip`
+- 当前安装资产：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.exe`
 - 默认输出：存在 D 盘时使用 `D:\南枫转写`，否则使用用户 Downloads 下的 `南枫转写`
 
 平台必须在仓库、Release 和交付产物名称中明确；应用内产品名保持一致。
@@ -90,7 +90,6 @@ VideoTranscriber/
 ├─ installer/
 │  ├─ install.cmd                   # 安装器启动桥接
 │  ├─ install.ps1                   # 旧 IExpress 安装桥接
-│  ├─ Install-Readme.zh-CN.txt       # 中文优先的安装说明模板
 │  └─ NanfengTranscriber-Windows.iss # Inno Setup 工程
 ├─ tests/
 │  ├─ test_frozen_runtime.py        # PyInstaller 冻结运行时回归
@@ -115,7 +114,7 @@ VideoTranscriber/
    └─ superpowers/                  # 性能方案、计划和基准证据
 ```
 
-构建目录、模型缓存、日志、ZIP 和 EXE 产物不纳入 Git。
+构建目录、模型缓存、日志和 EXE 产物不纳入 Git。
 
 ## 5. 核心模块职责
 
@@ -170,7 +169,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_installer_in
 
 旧 `build_windows_installer.ps1` 仅用于 IExpress 回退，不再作为正式构建入口。
 
-交付时必须实际检查 EXE 能启动、窗口标题为“南枫转写”、FFmpeg/FFprobe 存在，并核对安装 ZIP 的文件名、大小和 SHA-256。
+交付时必须实际检查 EXE 能启动、窗口标题为“南枫转写”、FFmpeg/FFprobe 存在，并核对 GitHub Release 上 Setup EXE 的文件名、大小和 SHA-256。
 
 ## 7. 当前验证状态
 
@@ -179,12 +178,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_installer_in
 - RTX 4090、`medium`、中文、GPU 优先、关闭润色的三样本耗时从 `130.499 秒` 降至 `28.403 秒`。
 - CPU `int8` 对 25 秒样本完成转写，耗时 `6.906 秒`。
 - PyInstaller EXE 可启动、界面响应正常、标题正确。
-- Windows v1.0.0 新安装 ZIP 已完成本机构建和验收，SHA-256 为 `17F4611F31CA3912D426CFB511364862D76F3835EF978FD61CBAFC03F7CD17B4`。
+- Windows 安装器已完成本机构建和验收；GitHub Release 当前只上传一个平台明确的 Setup EXE。
 - GitHub README 和 Release 默认展示当前版本的软件界面预览；预览图使用无隐私内容的固定 UI 基线，Release 资产名为 `NanfengTranscriber_Windows_UI_Preview.png`。
 
 ### 已自动化验证
 
-- 27 项自动回归通过，覆盖已有结果续跑、API 缺 Key/401/超时/空响应、模型跨会话本地复用与缓存修复、Inno 工程合同、中文安装说明、四档 DPI 截图清单。
+- 自动回归覆盖已有结果续跑、API 缺 Key/401/超时/空响应、模型跨会话本地复用与缓存修复、Inno 直接 EXE 发布合同和四档 DPI 截图清单。
 - 核心 Python 模块编译通过。
 - 冻结运行时能够跳过不必要的依赖扫描并进入 Worker。
 - Inno Setup 6.7.3 已编译 132 MB 级安装器，并在独立临时目录完成静默安装、主 EXE 检查和卸载。
@@ -206,7 +205,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_installer_in
 - GPU 不是硬要求，CUDA 运行库不完整时应明确提示并回退 CPU。
 - `BatchedInferencePipeline` 不传中文 `initial_prompt`，避免提示词在批次中泄漏和污染识别结果。
 - 翻译润色依赖外部 API，不属于完全离线能力，也不能承诺自动理解所有古文或专业术语。
-- 正式安装构建已切换到 Inno Setup；旧 IExpress 脚本仅保留回退。当前安装 ZIP 来自本轮最新源码，并已完成真实临时安装、启动和卸载验证。
+- 正式安装构建已切换到 Inno Setup；旧 IExpress 脚本仅保留回退。当前 Release 只交付 Setup EXE，并已完成真实临时安装、启动和卸载验证。
 
 ## 9. 后续接手顺序
 

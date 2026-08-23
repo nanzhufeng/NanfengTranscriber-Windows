@@ -23,17 +23,15 @@ class InnoInstallerContractTests(unittest.TestCase):
         self.assertIn("Inno Setup 6", content)
         self.assertIn("ISCC.exe", content)
         self.assertIn("NanfengTranscriber_Windows_v${Version}_Setup_${timestamp}", content)
-        self.assertIn("Install-Readme.zh-CN.txt", content)
+        self.assertIn("InstallerExe = $setupExe", content)
+        self.assertNotIn("Compress-Archive", content)
+        self.assertNotIn("Install-Readme.zh-CN.txt", content)
         self.assertNotIn("iexpress.exe", content.lower())
 
-    def test_install_notes_are_chinese_first_with_english_reference(self) -> None:
-        content = (PROJECT_ROOT / "installer" / "Install-Readme.zh-CN.txt").read_text(encoding="utf-8")
-        self.assertTrue(content.startswith("南枫转写 Windows v{{VERSION}} 安装说明"))
-        self.assertIn("安装步骤：", content)
-        self.assertIn("使用说明：", content)
-        self.assertIn("卸载方法：", content)
-        self.assertIn("English reference:", content)
-        self.assertLess(content.index("安装步骤："), content.index("English reference:"))
+    def test_release_contract_is_a_single_windows_setup_exe(self) -> None:
+        readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("NanfengTranscriber_Windows_*_Setup_*.exe", readme)
+        self.assertNotIn("NanfengTranscriber_Windows_*.zip", readme)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@
 
 ## Windows 安装
 
-从 GitHub Releases 下载标注为“Windows 可点击安装包”的 `NanfengTranscriber_Windows_*.zip`，解压后双击其中的 `NanfengTranscriber_Windows_*_Setup_*.exe`。压缩包内的 `安装说明.txt` 以中文为主，英文说明附在文末。
+从 GitHub Releases 直接下载标注为 Windows 的 `NanfengTranscriber_Windows_*_Setup_*.exe`，双击安装。Release 仅提供安装程序本体；安装说明以本 README 的中文内容为准。
 
 首次使用某个 Whisper 模型时需要联网下载模型文件；以后会强制从本地缓存加载，缓存损坏时才联网修复。安装包尚未进行商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
 

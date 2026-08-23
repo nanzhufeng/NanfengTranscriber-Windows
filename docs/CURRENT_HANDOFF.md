@@ -74,9 +74,9 @@
 ## 本次发布：Windows v1.0.2
 
 - 发布标签：`v1.0.2`；应用内产品名保持“南枫转写”，仓库与发布资产明确标注 Windows。
-- 已生成可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.zip`。
-- ZIP SHA-256：`C25AC5721ECB84E2B4D192290657A5643F7CB5FDA78FAF3704601449317D936C`。
-- ZIP 内容仅含 Setup EXE 与中文优先的 `安装说明.txt`；已在独立临时目录静默安装、验证主 EXE、FFmpeg、FFprobe 和窗口标题，随后卸载并确认无残留文件。
+- 已生成可点击安装程序：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.exe`。
+- Setup EXE SHA-256：`41B2B7CBA3FC3240CC95BF4F68BFE99ED2F6DFBA65867779853D3C15479E091E`。
+- GitHub Release 只上传 Windows Setup EXE，不再上传 ZIP 或额外 TXT；安装说明保留在 README。已在独立临时目录静默安装、验证主 EXE、FFmpeg、FFprobe 和窗口标题，随后卸载并确认无残留文件。
 
 ## 最近验证
 
@@ -90,13 +90,13 @@
 
 ### 已在自动化或源码层验证
 
-- `python -m unittest discover -s tests -v`：36 项通过，包含 API、DPI、Inno、中文安装说明、持久模型缓存、设置记忆、逐项定位、结束反馈、完成声音、自动定位和无音轨诊断回归。
+- `python -m unittest discover -s tests -v`：36 项通过，包含 API、DPI、Inno、直接 EXE 发布合同、持久模型缓存、设置记忆、逐项定位、结束反馈、完成声音、自动定位和无音轨诊断回归。
 - `python -m compileall app tests tools`：通过。
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。
 - `启动南枫转写_Windows_源码测试.bat` 冒烟通过：Python 进程保持运行，日志写入 `app started`，未闪退；新增定位列已完成 offscreen 布局检查。
 - GitHub 首版 PyInstaller EXE 已启动验证：进程正常响应、标题正确，FFmpeg/FFprobe 均包含在运行目录中。
-- 当前待发布安装 ZIP 已检查，仅包含平台明确的 Setup EXE 与中文优先的 `安装说明.txt`；ZIP SHA-256 见“待发布：Windows v1.0.1”。
+- 当前待发布安装程序使用平台明确的 Setup EXE；SHA-256 见“本次发布：Windows v1.0.2”。
 
 ## 已知边界与风险
 
