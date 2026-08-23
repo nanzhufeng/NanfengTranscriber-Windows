@@ -217,6 +217,8 @@ def _extract_audio(source: Path, target: Path, options: TranscribeOptions, cance
     command = [
         _ffmpeg_path(options, "ffmpeg.exe"),
         "-y",
+        "-v",
+        "error",
         "-i",
         str(source),
         "-vn",
@@ -228,13 +230,23 @@ def _extract_audio(source: Path, target: Path, options: TranscribeOptions, cance
         "wav",
         str(target),
     ]
-    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_subprocess_window_options())
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, **_subprocess_window_options())
     try:
         while True:
             return_code = process.poll()
             if return_code is not None:
                 if return_code != 0:
-                    raise RuntimeError("音频提取失败。请确认文件没有损坏，并且 FFmpeg 可用。")
+                    _stdout, stderr = process.communicate()
+                    detail = (stderr or b"").decode("utf-8", errors="replace").strip().lower()
+                    if "does not contain any stream" in detail or "output file #0 does not contain any stream" in detail:
+                        raise RuntimeError("未检测到可转写的音轨。该视频可能没有声音或只有画面。")
+                    if "no such file or directory" in detail:
+                        raise RuntimeError("音频提取失败：源文件不存在或已被移动。")
+                    if "permission denied" in detail:
+                        raise RuntimeError("音频提取失败：无法读取源文件，请检查文件权限。")
+                    if "invalid data found" in detail:
+                        raise RuntimeError("音频提取失败：媒体文件损坏或编码不受支持。")
+                    raise RuntimeError("音频提取失败：FFmpeg 无法读取该媒体文件。")
                 return
             _raise_if_cancelled(cancel_callback)
             time.sleep(0.2)

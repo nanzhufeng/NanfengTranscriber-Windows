@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import math
 import os
 import subprocess
 import sys
 import time
 import traceback
+import wave
 from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+try:
+    import winsound
+except ImportError:  # macOS 迁移时保留 Qt 的系统提示音回退。
+    winsound = None
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon
@@ -242,6 +250,80 @@ class CompletionResultDialog(QDialog):
         layout.addLayout(close_row)
 
 
+class AppSettingsDialog(QDialog):
+    """集中放置会影响批量结束行为的可持久化偏好。"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        *,
+        completion_sound: bool,
+        completion_dialog: bool,
+        auto_open_output: bool,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("设置")
+        self.setModal(True)
+        self.setMinimumWidth(420)
+        self.setStyleSheet(
+            "QDialog { background: #ffffff; }"
+            "QLabel#SettingsTitle { color: #102027; font-size: 18px; font-weight: 800; }"
+            "QLabel#SettingsHint { color: #667782; }"
+            "QFrame#SettingsSection { background: #f7fbfc; border: 1px solid #d7e7ea; border-radius: 8px; }"
+            "QCheckBox { color: #29434b; font-weight: 700; spacing: 8px; }"
+            "QPushButton#SettingsSave { min-width: 104px; background: #0f766e; color: #ffffff; "
+            "border: 1px solid #0f766e; border-radius: 6px; padding: 9px 18px; font-weight: 800; }"
+            "QPushButton#SettingsCancel { min-width: 104px; background: #f8fbfc; color: #42545b; "
+            "border: 1px solid #d5e7ea; border-radius: 6px; padding: 9px 18px; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+
+        title = QLabel("完成提醒与行为")
+        title.setObjectName("SettingsTitle")
+        hint = QLabel("这些选项会在下次启动时继续生效。")
+        hint.setObjectName("SettingsHint")
+        layout.addWidget(title)
+        layout.addWidget(hint)
+
+        section = QFrame()
+        section.setObjectName("SettingsSection")
+        section_layout = QVBoxLayout(section)
+        section_layout.setContentsMargins(16, 14, 16, 14)
+        section_layout.setSpacing(12)
+        self.completion_sound_check = QCheckBox("完成提示音")
+        self.completion_sound_check.setChecked(completion_sound)
+        self.completion_dialog_check = QCheckBox("完成提示")
+        self.completion_dialog_check.setChecked(completion_dialog)
+        self.auto_open_output_check = QCheckBox("完成后自动打开目录")
+        self.auto_open_output_check.setChecked(auto_open_output)
+        self.auto_open_output_check.setToolTip("仅在本次没有失败、无文字或主动停止项目时，定位并选中最近完成的导出文件。")
+        section_layout.addWidget(self.completion_sound_check)
+        section_layout.addWidget(self.completion_dialog_check)
+        section_layout.addWidget(self.auto_open_output_check)
+        layout.addWidget(section)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel_button = QPushButton("取消")
+        cancel_button.setObjectName("SettingsCancel")
+        cancel_button.clicked.connect(self.reject)
+        save_button = QPushButton("保存")
+        save_button.setObjectName("SettingsSave")
+        save_button.clicked.connect(self.accept)
+        buttons.addWidget(cancel_button)
+        buttons.addWidget(save_button)
+        layout.addLayout(buttons)
+
+    def values(self) -> dict[str, bool]:
+        return {
+            "completion_sound": self.completion_sound_check.isChecked(),
+            "completion_dialog": self.completion_dialog_check.isChecked(),
+            "auto_open_output": self.auto_open_output_check.isChecked(),
+        }
+
+
 class CenterComboBox(QComboBox):
     def __init__(self) -> None:
         super().__init__()
@@ -386,6 +468,7 @@ class MainWindow(QMainWindow):
         self.active_rows: set[int] = set()
         self.current_run_skipped_count = 0
         self.pending_completion_summary: dict[str, int] | None = None
+        self.pending_completion_target: Path | None = None
         self.started_at: float | None = None
         self.check_drag_active = False
         self.check_drag_state = Qt.Unchecked
@@ -423,6 +506,15 @@ class MainWindow(QMainWindow):
         self._restore_combo_setting(self.model_combo, "transcription/model", "medium")
         self._restore_combo_setting(self.language_combo, "transcription/language", "中文")
         self._restore_combo_setting(self.compute_mode_combo, "transcription/compute_mode", "GPU 优先")
+        self.completion_sound_enabled = self._setting_bool(
+            self.settings.value("preferences/completion_sound"), True
+        )
+        self.completion_dialog_enabled = self._setting_bool(
+            self.settings.value("preferences/completion_dialog"), True
+        )
+        self.auto_open_output_enabled = self._setting_bool(
+            self.settings.value("preferences/auto_open_output"), False
+        )
         defaults = {
             "export_txt": True,
             "export_md": True,
@@ -461,6 +553,9 @@ class MainWindow(QMainWindow):
         }
         for key, value in values.items():
             self.settings.setValue(f"transcription/{key}", value)
+        self.settings.setValue("preferences/completion_sound", self.completion_sound_enabled)
+        self.settings.setValue("preferences/completion_dialog", self.completion_dialog_enabled)
+        self.settings.setValue("preferences/auto_open_output", self.auto_open_output_enabled)
         self.settings.sync()
 
     def closeEvent(self, event) -> None:
@@ -527,6 +622,10 @@ class MainWindow(QMainWindow):
         self.open_folder_button = QPushButton("打开输出目录")
         self.open_folder_button.setObjectName("SideButton")
         self.open_folder_button.clicked.connect(self._open_output_dir)
+        self.settings_button = QPushButton("设置")
+        self.settings_button.setObjectName("SideSettingsButton")
+        self.settings_button.clicked.connect(self._open_settings)
+        sidebar_layout.addWidget(self.settings_button)
         sidebar_layout.addWidget(self.open_folder_button)
         shell.addWidget(sidebar)
 
@@ -790,6 +889,7 @@ class MainWindow(QMainWindow):
             QPushButton:disabled { color: #9aa9ad; background: #f1f5f6; border: 1px solid #dde8ea; }
             QPushButton#PrimaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f766e, stop:1 #2563eb); border: 1px solid #0f766e; color: #ffffff; font-weight: 800; }
             QPushButton#SideButton { background: #16a394; border: 1px solid #26c6b5; color: #ffffff; font-weight: 800; }
+            QPushButton#SideSettingsButton { background: #f3f7f9; border: 1px solid #d5e3e7; color: #42545b; font-weight: 800; }
             QPushButton#ChooseButton { background: #eefdf8; border: 1px solid #aee9d7; color: #087f76; font-weight: 800; }
             QPushButton#AddFileButton, QPushButton#AddFolderButton { min-width: 220px; max-width: 220px; background: #fff8e8; border: 1px solid #f6d48b; color: #a45b00; font-weight: 800; }
             QPushButton#AddFolderButton { background: #f3efff; border: 1px solid #ddd2ff; color: #6941c6; }
@@ -876,6 +976,59 @@ class MainWindow(QMainWindow):
         path = Path(self.output_edit.text()).expanduser()
         path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _open_settings(self) -> None:
+        dialog = AppSettingsDialog(
+            self,
+            completion_sound=self.completion_sound_enabled,
+            completion_dialog=self.completion_dialog_enabled,
+            auto_open_output=self.auto_open_output_enabled,
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+        values = dialog.values()
+        self.completion_sound_enabled = values["completion_sound"]
+        self.completion_dialog_enabled = values["completion_dialog"]
+        self.auto_open_output_enabled = values["auto_open_output"]
+        self._save_settings()
+        self._set_copy_tip("设置已保存", active=True)
+        QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
+
+    @staticmethod
+    def _completion_sound_bytes(has_failure: bool) -> bytes:
+        """生成短促低音量的 PCM WAV，避免依赖系统提示音的不可控音量。"""
+        sample_rate = 8_000
+        amplitude = 1_100
+        silence_samples = int(sample_rate * 0.035)
+        notes = ((523.25, 0.11), (392.0, 0.14)) if has_failure else ((783.99, 0.10), (1046.5, 0.14))
+        samples: list[int] = []
+        for frequency, duration in notes:
+            note_samples = int(sample_rate * duration)
+            for index in range(note_samples):
+                # 两端淡入淡出，避免短提示音产生刺耳的爆音。
+                fade = min(1.0, index / 80, (note_samples - index - 1) / 80)
+                samples.append(int(amplitude * fade * math.sin(2 * math.pi * frequency * index / sample_rate)))
+            samples.extend([0] * silence_samples)
+        pcm = b"".join(sample.to_bytes(2, byteorder="little", signed=True) for sample in samples)
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm)
+        return buffer.getvalue()
+
+    def _play_completion_sound(self, summary: dict[str, int]) -> None:
+        if not self.completion_sound_enabled:
+            return
+        has_failure = bool(summary.get("failed", 0) or summary.get("no_text", 0))
+        try:
+            if winsound is not None and sys.platform == "win32":
+                winsound.PlaySound(self._completion_sound_bytes(has_failure), winsound.SND_MEMORY)
+            else:
+                QApplication.beep()
+        except RuntimeError as exc:
+            self._debug_log(f"completion sound unavailable: {exc}")
 
     def _choose_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "选择视频或音频文件", "", "媒体文件 (*.mp4 *.mov *.mkv *.avi *.m4v *.wmv *.flv *.webm *.mp3 *.wav *.m4a *.aac *.flac *.ogg);;所有文件 (*.*)")
@@ -987,11 +1140,24 @@ class MainWindow(QMainWindow):
                     return path
         return None
 
+    def _generated_output_target_for_row(self, row: int) -> Path | None:
+        output_item = self.table.item(row, COL_OUTPUT)
+        if not output_item:
+            return None
+        output_value = output_item.data(OUTPUT_FILE_ROLE)
+        if not output_value:
+            return None
+        path = Path(str(output_value))
+        return path if path.exists() else None
+
     def _locate_row_file(self, row: int) -> None:
         target = self._locate_target_for_row(row)
         if target is None:
             QMessageBox.warning(self, "无法定位文件", "源文件和导出文件均不存在，可能已被移动或删除。")
             return
+        self._reveal_path(target)
+
+    def _reveal_path(self, target: Path) -> None:
         try:
             if target.is_dir():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
@@ -1214,6 +1380,7 @@ class MainWindow(QMainWindow):
             f"mode={options.compute_mode}, model={options.model_size}, language={options.language}"
         )
         self.active_rows = {item.row for item in items}
+        self.pending_completion_target = None
         self.started_at = time.monotonic()
         self.main_progress.setValue(0)
         self.total_eta_label.setText("总剩余：--")
@@ -1498,8 +1665,8 @@ class MainWindow(QMainWindow):
     @Slot(int, str)
     def _on_item_failed(self, row: int, error: str) -> None:
         self._debug_log(f"item failed: row={row}, error={error[:200]}")
-        if "没有识别到可导出的文字" in error:
-            message = "未识别到语音文字。可能是静音、纯音乐、画面字幕、音量太低，或语音被降噪过滤。"
+        if "没有识别到可导出的文字" in error or "未检测到可转写的音轨" in error:
+            message = "未检测到可转写的语音。该视频可能没有音轨、静音、纯音乐或只有画面。"
             self._set_status_cell(row, "无文字")
             self._set_cell(row, COL_PROGRESS, "100%")
             self._set_cell(row, COL_ETA, "0秒")
@@ -1534,6 +1701,19 @@ class MainWindow(QMainWindow):
                 for row in rows
                 if self.table.item(row, COL_STATUS)
             ]
+            completed_rows = [
+                row
+                for row in rows
+                if self.table.item(row, COL_STATUS) and self.table.item(row, COL_STATUS).text() == "完成"
+            ]
+            self.pending_completion_target = next(
+                (
+                    target
+                    for row in reversed(completed_rows)
+                    if (target := self._generated_output_target_for_row(row)) is not None
+                ),
+                None,
+            )
             self.pending_completion_summary = {
                 "success": statuses.count("完成"),
                 "failed": statuses.count("失败"),
@@ -1556,9 +1736,23 @@ class MainWindow(QMainWindow):
         self.add_folder_button.setEnabled(True)
         self._update_status()
         summary = self.pending_completion_summary
+        completion_target = self.pending_completion_target
         self.pending_completion_summary = None
+        self.pending_completion_target = None
         if summary:
-            QTimer.singleShot(0, lambda summary=summary: self._show_completion_dialog(summary))
+            if summary.get("success", 0) or summary.get("failed", 0) or summary.get("no_text", 0):
+                self._play_completion_sound(summary)
+            if (
+                self.auto_open_output_enabled
+                and summary.get("success", 0) > 0
+                and not summary.get("failed", 0)
+                and not summary.get("no_text", 0)
+                and not summary.get("stopped", 0)
+                and completion_target is not None
+            ):
+                QTimer.singleShot(0, lambda target=completion_target: self._reveal_path(target))
+            if self.completion_dialog_enabled:
+                QTimer.singleShot(0, lambda summary=summary: self._show_completion_dialog(summary))
 
     def _show_completion_dialog(self, summary: dict[str, int]) -> None:
         CompletionResultDialog(self, summary).exec()

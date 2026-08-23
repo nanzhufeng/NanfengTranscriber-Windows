@@ -1,6 +1,6 @@
 # 当前接手状态：南枫转写
 
-> 更新日期：2026-08-11
+> 更新日期：2026-08-23
 > 适用分支：`main`（对应 GitHub Windows 仓库 `nanzhufeng/NanfengTranscriber-Windows`）
 > 当前平台事实：Windows 源码已验证；macOS 尚未实施。
 
@@ -64,12 +64,19 @@
 - Windows 定位调用使用 `explorer.exe /select, <完整路径>` 的独立参数形式，避免中文或空格路径被 Explorer 误解析。
 - 结束反馈改为“转写结果”统计面板，按成功、失败、跳过、停止分色统计，跳过已有结果会计入本次汇总。
 
-## 待发布：Windows v1.0.1
+## 最近完成：完成提示音与通知设置
 
-- 目标标签：`v1.0.1`；应用内产品名保持“南枫转写”，仓库与发布资产明确标注 Windows。
-- 已生成可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.1_Setup_20260811_234023.zip`。
-- ZIP SHA-256：`133D5E4CCC4D2D9705B6A932E0B7F3C83E5ED088FF3CC4AE2099AC637E75DE92`。
-- 已验证 ZIP 内容仅含 Setup EXE 与中文优先的 `安装说明.txt`；已在独立临时目录静默安装、主 EXE 启动、卸载并确认无残留文件。
+- 侧栏新增“设置”入口，设置通过用户级 `QSettings` 持久化。
+- 批次有成功、失败或无文字结果时，默认播放约 0.3 秒的低音量双音提示；成功与失败采用不同音调，主动停止不播放提示音。
+- 设置可单独开关：完成提示音、批次结束结果摘要、完成后自动打开目录；自动打开默认关闭，避免打断工作流。启用后会在资源管理器中定位并选中本批次最近完成的实际导出文件，而非只打开输出根目录。
+- 提示音在内存中生成，不依赖联网、额外音频文件或大型多媒体运行库；Windows 使用 `winsound`，其他平台回退到 Qt 系统提示音。
+
+## 本次发布：Windows v1.0.2
+
+- 发布标签：`v1.0.2`；应用内产品名保持“南枫转写”，仓库与发布资产明确标注 Windows。
+- 已生成可点击安装 ZIP：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.zip`。
+- ZIP SHA-256：`C25AC5721ECB84E2B4D192290657A5643F7CB5FDA78FAF3704601449317D936C`。
+- ZIP 内容仅含 Setup EXE 与中文优先的 `安装说明.txt`；已在独立临时目录静默安装、验证主 EXE、FFmpeg、FFprobe 和窗口标题，随后卸载并确认无残留文件。
 
 ## 最近验证
 
@@ -83,7 +90,7 @@
 
 ### 已在自动化或源码层验证
 
-- `python -m unittest discover -s tests -v`：31 项通过，包含 API、DPI、Inno、中文安装说明、持久模型缓存、设置记忆、逐项定位和结束反馈回归。
+- `python -m unittest discover -s tests -v`：36 项通过，包含 API、DPI、Inno、中文安装说明、持久模型缓存、设置记忆、逐项定位、结束反馈、完成声音、自动定位和无音轨诊断回归。
 - `python -m compileall app tests tools`：通过。
 - `TranscribeWorker` 与 `TranscriptionSession` 导入通过。
 - 无界面窗口构造检查通过；它不替代人工可视 UI 验收。

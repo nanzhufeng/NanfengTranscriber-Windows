@@ -10,8 +10,8 @@
 - 应用内名称：`南枫转写`
 - Windows 仓库：`nanzhufeng/NanfengTranscriber-Windows`（Private）
 - Android 预留命名：`nanzhufeng/NanfengTranscriber-Android`
-- Windows Release：`南枫转写 Windows v1.0.0`
-- 当前安装资产：`NanfengTranscriber_Windows_v1.0.0_Setup_20260719_001129.zip`
+- Windows Release：`南枫转写 Windows v1.0.2`
+- 当前安装资产：`NanfengTranscriber_Windows_v1.0.2_Setup_20260823_185621.zip`
 - 默认输出：存在 D 盘时使用 `D:\南枫转写`，否则使用用户 Downloads 下的 `南枫转写`
 
 平台必须在仓库、Release 和交付产物名称中明确；应用内产品名保持一致。

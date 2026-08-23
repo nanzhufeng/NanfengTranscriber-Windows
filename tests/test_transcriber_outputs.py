@@ -28,6 +28,17 @@ class FakeSession:
         self.close_calls += 1
 
 
+class FailedFfmpegProcess:
+    def __init__(self, stderr: bytes) -> None:
+        self.stderr = stderr
+
+    def poll(self) -> int:
+        return 1
+
+    def communicate(self) -> tuple[bytes, bytes]:
+        return b"", self.stderr
+
+
 class TranscribeFileOutputTests(unittest.TestCase):
     def make_options(self, output_dir: Path) -> transcriber.TranscribeOptions:
         return transcriber.TranscribeOptions(
@@ -107,3 +118,15 @@ class TranscribeFileOutputTests(unittest.TestCase):
                     lambda _info: None,
                     session=FakeSession([]),
                 )
+
+    def test_audio_extraction_reports_missing_audio_track(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            options = self.make_options(Path(temp_dir))
+            failed_process = FailedFfmpegProcess(b"Output file #0 does not contain any stream\n")
+            with patch("app.transcriber.subprocess.Popen", return_value=failed_process) as popen:
+                with self.assertRaisesRegex(RuntimeError, "未检测到可转写的音轨"):
+                    transcriber._extract_audio(Path("silent.mp4"), Path(temp_dir) / "audio.wav", options, None)
+
+            command = popen.call_args.args[0]
+            self.assertIn("-v", command)
+            self.assertIn("error", command)
