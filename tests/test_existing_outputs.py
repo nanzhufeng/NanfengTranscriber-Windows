@@ -40,7 +40,7 @@ class ExistingOutputFlowTests(unittest.TestCase):
                 window._add_row(source_pending)
 
             existing_stem = safe_output_stem(source_existing.stem)
-            existing_output = root / "outputs" / existing_stem / f"{existing_stem}.txt"
+            existing_output = root / "outputs" / f"{existing_stem}.txt"
             existing_output.parent.mkdir(parents=True)
             existing_output.write_text("already transcribed", encoding="utf-8")
 

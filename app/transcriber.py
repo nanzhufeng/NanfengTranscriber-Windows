@@ -67,12 +67,19 @@ class TranscribeOptions:
     export_docx: bool
     postprocess_enabled: bool
     ffmpeg_dir: Path | None
+    create_video_subfolder: bool = False
+    save_beside_video: bool = False
 
 
 @dataclass(frozen=True)
 class TranscribeResult:
     files: list[Path]
     text: str
+
+
+def resolve_output_directory(source: Path, options: TranscribeOptions) -> Path:
+    root = source.parent if options.save_beside_video else options.output_dir
+    return root / safe_output_stem(source.stem) if options.create_video_subfolder else root
 
 
 def default_output_dir() -> Path:
@@ -292,10 +299,55 @@ def _write_md_text(target: Path, source: Path, text: str) -> None:
     target.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def _subtitle_cues(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build short sequential cues using word alignment when available."""
+    cues: list[dict[str, Any]] = []
+    for segment in segments:
+        units: list[dict[str, Any]] = []
+        for word in segment.get("words") or [segment]:
+            text = " ".join(word["text"].split())
+            if not text:
+                continue
+            start = max(0.0, float(word["start"]))
+            end = float(word["end"])
+            if end <= start:
+                continue
+            # Missing word alignment: distribute only within the original interval.
+            count = max(1, math.ceil(len(text) / 24), math.ceil((end - start) / 5))
+            count = min(count, len(text))
+            for i in range(count):
+                lo, hi = i * len(text) // count, (i + 1) * len(text) // count
+                units.append({"start": start + (end - start) * lo / len(text),
+                              "end": start + (end - start) * hi / len(text),
+                              "text": text[lo:hi], "space": str(word["text"]).startswith(" ") and i == 0})
+        current = None
+        for unit in units:
+            separator = " " if unit["space"] else ""
+            if current and (len(current["text"] + separator + unit["text"]) > 24
+                            or unit["end"] - current["start"] > 5
+                            or unit["start"] - current["end"] > 0.6):
+                cues.append(current)
+                current = None
+            if current is None:
+                current = {"start": unit["start"], "end": unit["end"], "text": unit["text"]}
+            else:
+                current["text"] += separator + unit["text"]
+                current["end"] = unit["end"]
+            if current["text"].endswith(tuple("。！？.!?；;")):
+                cues.append(current)
+                current = None
+        if current:
+            cues.append(current)
+    cues.sort(key=lambda cue: cue["start"])
+    for index in range(len(cues) - 1):
+        cues[index]["end"] = min(cues[index]["end"], cues[index + 1]["start"])
+    return [cue for cue in cues if round(cue["end"] * 1000) > round(cue["start"] * 1000)]
+
+
 def _write_srt(target: Path, segments: list[dict[str, Any]]) -> None:
     lines: list[str] = []
     index = 1
-    for segment in segments:
+    for segment in _subtitle_cues(segments):
         text = segment["text"].strip()
         if not text:
             continue
@@ -557,6 +609,7 @@ class TranscriptionSession:
         transcribe_kwargs: dict[str, Any] = {
             "language": language,
             "vad_filter": True,
+            "word_timestamps": options.export_srt,
             "beam_size": 3,
             "temperature": 0.0,
             "condition_on_previous_text": False,
@@ -697,7 +750,11 @@ class TranscriptionSession:
         segments: list[dict[str, Any]] = []
         for segment in segment_iter:
             _raise_if_cancelled(cancel_callback)
-            segments.append({"start": segment.start, "end": segment.end, "text": segment.text})
+            entry = {"start": segment.start, "end": segment.end, "text": segment.text}
+            words = getattr(segment, "words", None)
+            if words:
+                entry["words"] = [{"start": w.start, "end": w.end, "text": w.word} for w in words]
+            segments.append(entry)
             ratio = min(0.98, (segment.end / duration) if duration else 0.5)
             elapsed = max(time.monotonic() - started_at, 0.1)
             eta = elapsed * (1 - ratio) / ratio if ratio > 0 else 0
@@ -750,7 +807,7 @@ def transcribe_file(
     _add_nvidia_dll_directories()
 
     _raise_if_cancelled(cancel_callback)
-    options.output_dir.mkdir(parents=True, exist_ok=True)
+    resolve_output_directory(source, options).mkdir(parents=True, exist_ok=True)
     duration = probe_duration_seconds(source, options)
     owns_session = session is None
     active_session = session or TranscriptionSession()
@@ -776,7 +833,7 @@ def transcribe_file(
         raise RuntimeError("没有识别到可导出的文字。")
 
     safe_stem = safe_output_stem(source.stem)
-    output_base = options.output_dir / safe_stem
+    output_base = resolve_output_directory(source, options)
     output_base.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
     readable_segments = _merge_readable_segments(segments)

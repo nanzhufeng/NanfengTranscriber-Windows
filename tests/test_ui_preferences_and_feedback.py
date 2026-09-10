@@ -33,6 +33,10 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             first.completion_sound_enabled = False
             first.completion_dialog_enabled = False
             first.auto_open_output_enabled = True
+            self.assertFalse(first.create_video_subfolder)
+            self.assertFalse(first.save_beside_video)
+            first.save_beside_video = True
+            first.create_video_subfolder = True
             first._save_settings()
             first.close()
 
@@ -50,6 +54,8 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertFalse(second.completion_sound_enabled)
             self.assertFalse(second.completion_dialog_enabled)
             self.assertTrue(second.auto_open_output_enabled)
+            self.assertTrue(second.save_beside_video)
+            self.assertTrue(second.create_video_subfolder)
             second.close()
 
     def test_settings_dialog_returns_completion_preferences(self) -> None:
@@ -67,7 +73,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             dialog.auto_open_output_check.setChecked(True)
             self.assertEqual(
                 dialog.values(),
-                {"completion_sound": False, "completion_dialog": False, "auto_open_output": True},
+                {"completion_sound": False, "completion_dialog": False, "auto_open_output": True, "create_video_subfolder": False, "save_beside_video": False},
             )
             dialog.close()
             window.close()

@@ -56,6 +56,7 @@ from .transcriber import (
     find_ffmpeg_dir,
     probe_duration_seconds,
     safe_output_stem,
+    resolve_output_directory,
     transcribe_file,
 )
 
@@ -260,6 +261,8 @@ class AppSettingsDialog(QDialog):
         completion_sound: bool,
         completion_dialog: bool,
         auto_open_output: bool,
+        create_video_subfolder: bool = False,
+        save_beside_video: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("设置")
@@ -280,7 +283,7 @@ class AppSettingsDialog(QDialog):
         layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(14)
 
-        title = QLabel("完成提醒与行为")
+        title = QLabel("输出与完成行为")
         title.setObjectName("SettingsTitle")
         hint = QLabel("这些选项会在下次启动时继续生效。")
         hint.setObjectName("SettingsHint")
@@ -302,7 +305,26 @@ class AppSettingsDialog(QDialog):
         section_layout.addWidget(self.completion_sound_check)
         section_layout.addWidget(self.completion_dialog_check)
         section_layout.addWidget(self.auto_open_output_check)
+        self.save_beside_video_check = QCheckBox("保存到视频所在目录")
+        self.save_beside_video_check.setChecked(save_beside_video)
+        self.save_beside_video_check.setToolTip("勾选：保存到每个视频所在目录；不勾选：使用主界面的指定保存路径。")
+        section_layout.addWidget(self.save_beside_video_check)
+        location_hint = QLabel("不勾选时使用软件指定路径；勾选后每个视频分别保存到原目录。")
+        location_hint.setObjectName("SettingsHint")
+        location_hint.setWordWrap(True)
+        section_layout.addWidget(location_hint)
+        self.create_video_subfolder_check = QCheckBox("新建视频同名子文件夹")
+        self.create_video_subfolder_check.setChecked(create_video_subfolder)
+        section_layout.addWidget(self.create_video_subfolder_check)
+        output_hint = QLabel("默认关闭：结果直接保存到目标目录；开启后按视频分文件夹。")
+        output_hint.setObjectName("SettingsHint")
+        output_hint.setWordWrap(True)
+        section_layout.addWidget(output_hint)
         layout.addWidget(section)
+        review = QLabel("功能审阅：保存位置与子文件夹均保留为可选设置，入口位于此页。\n默认不建子文件夹，减少目录层级；需要分类时再开启。")
+        review.setObjectName("SettingsHint")
+        review.setWordWrap(True)
+        layout.addWidget(review)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -321,6 +343,8 @@ class AppSettingsDialog(QDialog):
             "completion_sound": self.completion_sound_check.isChecked(),
             "completion_dialog": self.completion_dialog_check.isChecked(),
             "auto_open_output": self.auto_open_output_check.isChecked(),
+            "create_video_subfolder": self.create_video_subfolder_check.isChecked(),
+            "save_beside_video": self.save_beside_video_check.isChecked(),
         }
 
 
@@ -515,6 +539,12 @@ class MainWindow(QMainWindow):
         self.auto_open_output_enabled = self._setting_bool(
             self.settings.value("preferences/auto_open_output"), False
         )
+        self.create_video_subfolder = self._setting_bool(
+            self.settings.value("preferences/create_video_subfolder"), False
+        )
+        self.save_beside_video = self._setting_bool(
+            self.settings.value("preferences/save_beside_video"), False
+        )
         defaults = {
             "export_txt": True,
             "export_md": True,
@@ -556,6 +586,8 @@ class MainWindow(QMainWindow):
         self.settings.setValue("preferences/completion_sound", self.completion_sound_enabled)
         self.settings.setValue("preferences/completion_dialog", self.completion_dialog_enabled)
         self.settings.setValue("preferences/auto_open_output", self.auto_open_output_enabled)
+        self.settings.setValue("preferences/create_video_subfolder", self.create_video_subfolder)
+        self.settings.setValue("preferences/save_beside_video", self.save_beside_video)
         self.settings.sync()
 
     def closeEvent(self, event) -> None:
@@ -983,6 +1015,8 @@ class MainWindow(QMainWindow):
             completion_sound=self.completion_sound_enabled,
             completion_dialog=self.completion_dialog_enabled,
             auto_open_output=self.auto_open_output_enabled,
+            create_video_subfolder=self.create_video_subfolder,
+            save_beside_video=self.save_beside_video,
         )
         if dialog.exec() != QDialog.Accepted:
             return
@@ -990,6 +1024,8 @@ class MainWindow(QMainWindow):
         self.completion_sound_enabled = values["completion_sound"]
         self.completion_dialog_enabled = values["completion_dialog"]
         self.auto_open_output_enabled = values["auto_open_output"]
+        self.create_video_subfolder = values["create_video_subfolder"]
+        self.save_beside_video = values["save_beside_video"]
         self._save_settings()
         self._set_copy_tip("设置已保存", active=True)
         QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
@@ -1183,6 +1219,8 @@ class MainWindow(QMainWindow):
             True,
             False,
             self.ffmpeg_dir,
+            create_video_subfolder=self.create_video_subfolder,
+            save_beside_video=self.save_beside_video,
         )
 
     def _set_select_cell(self, row: int, checked: bool) -> None:
@@ -1285,7 +1323,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "导出格式为空", "请至少选择 TXT、Markdown 或 SRT。")
             return None
         output_dir = Path(self.output_edit.text()).expanduser()
-        output_dir.mkdir(parents=True, exist_ok=True)
+        if not self.save_beside_video:
+            output_dir.mkdir(parents=True, exist_ok=True)
         return TranscribeOptions(
             output_dir,
             self.model_combo.currentText(),
@@ -1297,11 +1336,13 @@ class MainWindow(QMainWindow):
             self.docx_check.isChecked(),
             self.polish_check.isChecked(),
             self.ffmpeg_dir,
+            create_video_subfolder=self.create_video_subfolder,
+            save_beside_video=self.save_beside_video,
         )
 
     def _expected_output_paths(self, item: QueueItem, options: TranscribeOptions) -> list[Path]:
         safe_stem = safe_output_stem(item.path.stem)
-        output_base = options.output_dir / safe_stem
+        output_base = resolve_output_directory(item.path, options)
         paths: list[Path] = []
         if options.export_txt:
             paths.append(output_base / f"{safe_stem}.txt")

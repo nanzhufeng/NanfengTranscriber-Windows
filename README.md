@@ -4,9 +4,15 @@
 
 ## 软件界面预览
 
-![南枫转写 Windows 软件界面预览](tests/ui_baselines/windows/main-window-scale-1_0.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.3.png)
 
-## v1.0.2 功能
+## v1.0.3 更新
+
+- 默认直接输出到目标目录；设置可开启视频同名子文件夹。
+- 设置可选择保存到每个视频所在目录，或使用软件指定路径，重启后保留选择。
+- SRT 使用逐词时间戳分成短字幕，按停顿与句末切分，避免长段铺屏及时间重叠。
+
+## 功能
 
 - 批量添加视频、音频或整个文件夹，也支持拖放导入。
 - 使用 faster-whisper 的 `base`、`small`、`medium`、`large-v3` 模型，默认 `medium`。
