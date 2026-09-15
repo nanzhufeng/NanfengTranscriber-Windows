@@ -62,6 +62,10 @@ from .transcriber import (
 
 
 APP_NAME = "南枫转写"
+APP_VERSION = "1.0.4"
+APP_DEVELOPED_AT = "2026-09-15 23:03"
+GITHUB_REPOSITORY = "nanzhufeng/NanfengTranscriber-Windows"
+GITHUB_REPOSITORY_URL = f"https://github.com/{GITHUB_REPOSITORY}"
 SUPPORTED_EXTENSIONS = {
     ".mp4",
     ".mov",
@@ -251,6 +255,101 @@ class CompletionResultDialog(QDialog):
         layout.addLayout(close_row)
 
 
+class AboutDialog(QDialog):
+    """展示当前版本可追溯的产品和开发者信息。"""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("关于")
+        self.setModal(True)
+        self.setMinimumWidth(620)
+        self.setStyleSheet(
+            "QDialog { background: #fbfbfb; }"
+            "QLabel#AboutTitle { color: #102027; font-size: 24px; font-weight: 800; }"
+            "QLabel#AboutProduct { color: #102027; font-size: 17px; font-weight: 800; }"
+            "QLabel#AboutSectionTitle { color: #102027; font-size: 16px; font-weight: 800; }"
+            "QLabel#AboutBody, QLabel#AboutHint { color: #42545b; font-size: 14px; }"
+            "QLabel#AboutLink { color: #29434b; font-size: 14px; }"
+            "QFrame#AboutCard { background: #ffffff; border: 1px solid #edf0f1; border-radius: 18px; }"
+            "QFrame#AboutSeparator { background: #e7ecee; border: none; max-height: 1px; }"
+            "QPushButton#AboutClose { min-width: 104px; background: #0f766e; color: #ffffff; "
+            "border: 1px solid #0f766e; border-radius: 6px; padding: 9px 18px; font-weight: 800; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(42, 26, 42, 26)
+        layout.setSpacing(20)
+
+        title = QLabel("关于")
+        title.setObjectName("AboutTitle")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        card = QFrame()
+        card.setObjectName("AboutCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(30, 27, 30, 25)
+        card_layout.setSpacing(0)
+
+        product = QLabel("南枫转写 Windows")
+        product.setObjectName("AboutProduct")
+        description = QLabel("本地优先的批量音视频转写工作台。")
+        description.setObjectName("AboutHint")
+        card_layout.addWidget(product)
+        card_layout.addWidget(description)
+        card_layout.addSpacing(26)
+        card_layout.addWidget(self._separator())
+        card_layout.addSpacing(25)
+
+        version_title = QLabel("版本信息")
+        version_title.setObjectName("AboutSectionTitle")
+        version = QLabel(f"Desktop 版 {APP_VERSION}")
+        version.setObjectName("AboutBody")
+        developed_at = QLabel(f"开发时间 {APP_DEVELOPED_AT}")
+        developed_at.setObjectName("AboutBody")
+        card_layout.addWidget(version_title)
+        card_layout.addWidget(version)
+        card_layout.addWidget(developed_at)
+        card_layout.addSpacing(25)
+        card_layout.addWidget(self._separator())
+        card_layout.addSpacing(25)
+
+        developer_title = QLabel("开发者信息")
+        developer_title.setObjectName("AboutSectionTitle")
+        developer = QLabel("开发者：席瑞")
+        developer.setObjectName("AboutBody")
+        email = QLabel("联系邮箱：nanzhufeng.studio@gmail.com")
+        email.setObjectName("AboutBody")
+        repository = QLabel(
+            f'源码与更新：<a href="{GITHUB_REPOSITORY_URL}">GitHub · {GITHUB_REPOSITORY}</a>'
+        )
+        repository.setObjectName("AboutLink")
+        repository.setOpenExternalLinks(True)
+        copyright_label = QLabel("版权所有 © 2026 席瑞")
+        copyright_label.setObjectName("AboutBody")
+        card_layout.addWidget(developer_title)
+        card_layout.addWidget(developer)
+        card_layout.addWidget(email)
+        card_layout.addWidget(repository)
+        card_layout.addWidget(copyright_label)
+        layout.addWidget(card)
+
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_button = QPushButton("关闭")
+        close_button.setObjectName("AboutClose")
+        close_button.clicked.connect(self.accept)
+        close_row.addWidget(close_button)
+        close_row.addStretch(1)
+        layout.addLayout(close_row)
+
+    @staticmethod
+    def _separator() -> QFrame:
+        separator = QFrame()
+        separator.setObjectName("AboutSeparator")
+        separator.setFrameShape(QFrame.HLine)
+        return separator
+
+
 class AppSettingsDialog(QDialog):
     """集中放置会影响批量结束行为的可持久化偏好。"""
 
@@ -327,6 +426,10 @@ class AppSettingsDialog(QDialog):
         layout.addWidget(review)
 
         buttons = QHBoxLayout()
+        about_button = QPushButton("关于南枫转写")
+        about_button.setObjectName("SettingsCancel")
+        about_button.clicked.connect(self._open_about)
+        buttons.addWidget(about_button)
         buttons.addStretch(1)
         cancel_button = QPushButton("取消")
         cancel_button.setObjectName("SettingsCancel")
@@ -337,6 +440,9 @@ class AppSettingsDialog(QDialog):
         buttons.addWidget(cancel_button)
         buttons.addWidget(save_button)
         layout.addLayout(buttons)
+
+    def _open_about(self) -> None:
+        AboutDialog(self).exec()
 
     def values(self) -> dict[str, bool]:
         return {

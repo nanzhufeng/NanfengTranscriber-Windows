@@ -78,6 +78,22 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             dialog.close()
             window.close()
 
+    def test_about_dialog_shows_current_product_and_release_information(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            window = main.MainWindow(settings=settings)
+            dialog = main.AboutDialog(window)
+
+            texts = [label.text() for label in dialog.findChildren(main.QLabel)]
+            self.assertEqual(dialog.windowTitle(), "关于")
+            self.assertIn("南枫转写 Windows", texts)
+            self.assertIn(f"Desktop 版 {main.APP_VERSION}", texts)
+            self.assertIn(f"开发时间 {main.APP_DEVELOPED_AT}", texts)
+            self.assertTrue(any(main.GITHUB_REPOSITORY in text for text in texts))
+            self.assertIn("版权所有 © 2026 席瑞", texts)
+            dialog.close()
+            window.close()
+
     def test_completion_sound_respects_user_switch(self) -> None:
         with TemporaryDirectory() as temp_dir:
             settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)

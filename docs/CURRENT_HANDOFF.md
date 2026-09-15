@@ -43,6 +43,13 @@
 - 发布等价源码界面预览位于 `docs/preview-v1.0.3.png`，使用隔离演示数据。
 - 凭据模式扫描未发现命中；Release 只上传 Setup EXE，不上传测试媒体或日志。
 
+## 2026-09-15：设置中的关于信息（源码变更）
+
+- 设置底部新增“关于南枫转写”入口，打开独立白色信息卡，沿用标题、产品、版本和开发者三段布局。
+- 软件信息对应 Windows v1.0.4：`Desktop 版 1.0.4`、开发时间 `2026-09-15 23:03`；GitHub 链接指向 `nanzhufeng/NanfengTranscriber-Windows`。
+- 开发者、邮箱和版权文字遵循用户给出的参考信息；GitHub 链接可由用户点击打开。41 项测试、隔离 PyInstaller 构建、安装启动、FFmpeg/FFprobe、卸载及发布合同检查均已通过。
+- v1.0.4 准备从短 ASCII 路径上传唯一安装器 `NanfengTranscriber-Windows-v1.0.4-Setup.exe`，SHA-256 为 `E203BDDACEB7F36F28B5FD9BD828A1E8962FF5FF51F1AD58399448AF009E3D21`。
+
 ## 已实现
 
 - Python + PySide6 桌面工作台：批量添加文件和文件夹、拖入导入、逐项选择、队列状态、总进度、总剩余时间。
