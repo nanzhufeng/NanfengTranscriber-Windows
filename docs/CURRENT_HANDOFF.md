@@ -1,5 +1,7 @@
 # 当前接手状态：南枫转写
 
+> 2026-10-12 Windows v1.0.6：用户确认浅灰底、无边框白卡与彩色按钮，并授权打包上传 GitHub。当前冻结版主窗口/设置截图已同步 README；50 项测试、14 项发布检查和独立 QA AppId 安装/启动/卸载通过。精简主包 160,883,612 字节，SHA-256 `4c9e2b809ad62bbd3f4bdf55c19430c29aa37a500724788a853e2a5245ac0e04`，Authenticode 为 NotSigned；短路径产物 `D:/ReleaseUploads/NanfengTranscriber-Windows-v1.0.6/NanfengTranscriber-Windows-v1.0.6-Setup.exe`。沿用固定构建缓存和按需模型运行环境。源码入口 `启动最新界面_Windows.bat`；验收范围见 [release-v1.0.6.json](release-v1.0.6.json)，源码提交与远端发布状态以 GitHub v1.0.6 标签为准。
+
 > 2026-10-12 v1.0.5 发布：用户已授权精简主包上传 GitHub，并更新契约为 Windows 默认未签名发布。固定缓存 `build`，当前应用目录 `dist_release_current`；构建须隔离 PATH，禁止打入 Codex Poppler 的 ICU DLL。主包约 161 MB，不包含 PyTorch/CUDA 或模型权重；Qwen 环境首次使用时经安装提示按需装入 `%LOCALAPPDATA%/NanfengTranscriber/runtimes/qwen`。安装脚本显式参数为 `-SourceAppPath`。50 项测试、14 项发布合同、冻结版截图与转写、独立 QA AppId 的安装/启动/卸载通过；最终产物见 `docs/release-v1.0.5.json`，签名状态 NotSigned 已如实标注。
 
 > 2026-10-12 模型升级的当前状态以 [PROJECT_STATUS.md](PROJECT_STATUS.md) 为准。当前源码已替换为两个中文本地模式；收起输入框只显示中文名，展开下拉列表后在中文名下面显示真实模型名；页面下方说明文字已删除。详细历史发布信息保留在下文。

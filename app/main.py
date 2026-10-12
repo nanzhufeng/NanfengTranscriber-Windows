@@ -71,8 +71,8 @@ from .transcriber import (
 from .model_modes import MODE_OPTIONS, mode_description, model_for_mode
 
 APP_NAME = "南枫转写"
-APP_VERSION = "1.0.5"
-APP_DEVELOPED_AT = "2026-10-12 13:20"
+APP_VERSION = "1.0.6"
+APP_DEVELOPED_AT = "2026-10-12 18:18"
 GITHUB_REPOSITORY = "nanzhufeng/NanfengTranscriber-Windows"
 GITHUB_REPOSITORY_URL = f"https://github.com/{GITHUB_REPOSITORY}"
 SUPPORTED_EXTENSIONS = {
@@ -189,9 +189,9 @@ class CompletionResultDialog(QDialog):
             "QFrame#ResultStat { border-radius: 8px; }"
             "QLabel#ResultNumber { font-size: 21px; font-weight: 800; }"
             "QLabel#ResultLabel { font-size: 12px; font-weight: 700; }"
-            "QPushButton#ResultClose { min-width: 126px; background: #2563eb; color: #ffffff; "
-            "border: 1px solid #2563eb; border-radius: 6px; padding: 10px 22px; font-weight: 800; }"
-            "QPushButton#ResultClose:hover { background: #1d4ed8; }"
+            "QPushButton#ResultClose { min-width: 126px; background: #6075c8; color: #ffffff; "
+            "border: none; border-radius: 18px; padding: 10px 22px; font-weight: 700; }"
+            "QPushButton#ResultClose:hover { background: #5065b5; }"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 22)
@@ -229,7 +229,7 @@ class CompletionResultDialog(QDialog):
             card.setObjectName("ResultStat")
             # 使用带选择器的样式，避免外层卡片边框继承到内部数字和标签。
             card.setStyleSheet(
-                f"QFrame#ResultStat {{ background: {background}; border: 1px solid {border}; }}"
+                f"QFrame#ResultStat {{ background: {background}; border: none; }}"
                 "QFrame#ResultStat QLabel { background: transparent; border: none; }"
             )
             card_layout = QVBoxLayout(card)
@@ -279,10 +279,11 @@ class AboutDialog(QDialog):
             "QLabel#AboutSectionTitle { color: #102027; font-size: 16px; font-weight: 800; }"
             "QLabel#AboutBody, QLabel#AboutHint { color: #42545b; font-size: 14px; }"
             "QLabel#AboutLink { color: #29434b; font-size: 14px; }"
-            "QFrame#AboutCard { background: #ffffff; border: 1px solid #edf0f1; border-radius: 18px; }"
+            "QFrame#AboutCard { background: #ffffff; border: none; border-radius: 18px; }"
             "QFrame#AboutSeparator { background: #e7ecee; border: none; max-height: 1px; }"
-            "QPushButton#AboutClose { min-width: 104px; background: #0f766e; color: #ffffff; "
-            "border: 1px solid #0f766e; border-radius: 6px; padding: 9px 18px; font-weight: 800; }"
+            "QPushButton#AboutClose { min-width: 104px; background: #6075c8; color: #ffffff; "
+            "border: none; border-radius: 18px; padding: 9px 18px; font-weight: 700; }"
+            "QPushButton#AboutClose:hover { background: #5065b5; }"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(42, 26, 42, 26)
@@ -381,25 +382,26 @@ class AppSettingsDialog(QDialog):
         self.setMinimumWidth(660)
         self.setStyleSheet(
             "QDialog { background: transparent; }"
-            "QFrame#SettingsCard { background: #ffffff; border: 1px solid #dce3e8; border-radius: 18px; }"
+            "QFrame#SettingsCard { background: #ffffff; border: none; border-radius: 18px; }"
             "QLabel { color: #182430; font-size: 14px; background: transparent; border: none; }"
             "QLabel#SettingsTitle { font-size: 22px; font-weight: 700; }"
             "QLabel#SectionTitle { font-size: 17px; font-weight: 700; }"
             "QLabel#SettingsHint { color: #687684; font-size: 12px; }"
-            "QFrame#SettingsSection { background: #f4f7f9; border: none; border-radius: 12px; }"
+            "QFrame#SettingsSection { background: #f4f4f4; border: none; border-radius: 12px; }"
             "QScrollArea, QWidget#SettingsContent { background: transparent; border: none; }"
             "QRadioButton { color: #182430; font-size: 14px; spacing: 10px; background: transparent; }"
             "QRadioButton::indicator { width: 18px; height: 18px; border-radius: 10px; border: 1px solid #aeb8c2; background: white; }"
-            "QRadioButton::indicator:checked { border: 5px solid #0a8778; width: 10px; height: 10px; }"
-            "QRadioButton:focus { color: #087b6e; }"
-            "QPushButton { color: #182430; font-size: 14px; font-weight: 600; background: #fafcfd; border: 1px solid #d5dfe7; border-radius: 20px; padding: 0 18px; }"
-            "QPushButton:hover { background: #eef5f3; border-color: #9ac8bb; }"
-            "QPushButton:focus { border: 2px solid #0a8778; }"
-            "QPushButton#SettingsSave { background: #098579; color: white; border-color: #098579; }"
-            "QPushButton#SettingsSave:hover { background: #077466; }"
+            "QRadioButton::indicator:checked { border: 5px solid #6075c8; width: 10px; height: 10px; }"
+            "QRadioButton:focus { color: #182430; }"
+            "QPushButton { color: #27313d; font-size: 14px; font-weight: 600; background: #f1f3f5; border: none; border-radius: 20px; padding: 0 18px; }"
+            "QPushButton:hover { background: #e7eaee; }"
+            "QPushButton:focus { background: #e3e6ea; }"
+            "QPushButton#SettingsSave { background: #6075c8; color: white; border: none; }"
+            "QPushButton#SettingsSave:hover, QPushButton#SettingsSave:focus { background: #5065b5; }"
             "QPushButton#SettingsClose { border: none; background: transparent; border-radius: 16px; padding: 0; }"
-            "QPushButton#SettingsClose:hover { background: #eef2f4; }"
-            "QPushButton#SettingsReview { text-align: left; border: none; border-radius: 10px; background: #f4f7f9; padding: 0 16px; }"
+            "QPushButton#SettingsClose:hover { background: #eef0f2; }"
+            "QPushButton#SettingsReview { text-align: left; border: none; border-radius: 10px; background: #f1f3f5; padding: 0 16px; }"
+            "QPushButton#SettingsReview:hover { background: #e8ebef; }"
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -450,8 +452,8 @@ class AppSettingsDialog(QDialog):
             badge = QLabel()
             badge.setFixedSize(38, 38)
             badge.setAlignment(Qt.AlignCenter)
-            badge.setStyleSheet("background: #d6f3eb; border-radius: 19px;")
-            badge.setPixmap(parent._configuration_icon(icon, "#174f52").pixmap(22, 22))
+            badge.setStyleSheet("background: #eef0f2; border-radius: 19px;")
+            badge.setPixmap(parent._configuration_icon(icon, "#374151").pixmap(22, 22))
             row.addWidget(badge)
             label = QLabel(name)
             label.setObjectName("SectionTitle")
@@ -490,7 +492,7 @@ class AppSettingsDialog(QDialog):
         output_box.addWidget(self.save_beside_video_check)
         line = QFrame()
         line.setFixedHeight(1)
-        line.setStyleSheet("background: #dde5eb;")
+        line.setStyleSheet("background: #e5e7eb;")
         output_box.addWidget(line)
         self.create_video_subfolder_check = toggle(output_box, "新建视频同名子文件夹", create_video_subfolder)
         hint(output_box, "关闭时直接保存到目标目录。")
@@ -639,13 +641,13 @@ def draw_mode_lines(painter, rect, name, model, selected=False):
     title_font.setPixelSize(13)
     title_font.setWeight(QFont.DemiBold)
     painter.setFont(title_font)
-    painter.setPen(QColor("#086b55") if selected else QColor("#405362"))
+    painter.setPen(QColor("#1f2937") if selected else QColor("#374151"))
     painter.drawText(QRect(rect.x(), rect.y(), rect.width(), rect.height() // 2), Qt.AlignCenter, name)
     model_font = QFont(title_font)
     model_font.setPixelSize(11)
     model_font.setWeight(QFont.Normal)
     painter.setFont(model_font)
-    painter.setPen(QColor("#42645a") if selected else QColor("#647581"))
+    painter.setPen(QColor("#4b5563") if selected else QColor("#6b7280"))
     painter.drawText(QRect(rect.x(), rect.y() + rect.height() // 2, rect.width(), rect.height() // 2), Qt.AlignCenter, model)
     painter.restore()
 
@@ -663,10 +665,10 @@ class ModeItemDelegate(QStyledItemDelegate):
         painter.fillRect(option.rect, QColor("#ffffff"))
         surface = option.rect.adjusted(4, 2, -4, -2)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#e5f5ee") if selected else QColor("#f0f3f2") if hovered else QColor("#ffffff"))
+        painter.setBrush(QColor("#e5e7eb") if selected else QColor("#f3f4f6") if hovered else QColor("#ffffff"))
         painter.drawRoundedRect(surface, 6, 6)
         if option.state & QStyle.State_HasFocus:
-            painter.setPen(QColor("#07975b"))
+            painter.setPen(QColor("#6b7280"))
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(surface, 6, 6)
         draw_mode_lines(painter, option.rect.adjusted(8, 4, -8, -4), index.data(), index.data(Qt.UserRole), selected)
@@ -710,10 +712,10 @@ class PolishSwitch(QCheckBox):
         track = QPainterPath()
         track.addRoundedRect(QRectF(1.5, 1.5, self.width() - 3, self.height() - 3), 13.5, 13.5)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#07975b") if self.isChecked() else QColor("#dce1e5"))
+        painter.setBrush(QColor("#6075c8") if self.isChecked() else QColor("#d7dbe0"))
         painter.drawPath(track)
         if self.hasFocus() and self._keyboard_focus:
-            painter.setPen(QPen(QColor("#087b6e"), 2))
+            painter.setPen(QPen(QColor("#6b7280"), 2))
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(track)
         painter.setPen(Qt.NoPen)
@@ -1149,12 +1151,12 @@ class MainWindow(QMainWindow):
 
         self.add_files_button = QPushButton("添加文件")
         self.add_files_button.setObjectName("AddFileButton")
-        self.add_files_button.setIcon(self._configuration_icon("folder", "#a96800"))
+        self.add_files_button.setIcon(self._configuration_icon("folder", "#a65e28"))
         self.add_files_button.setIconSize(QSize(18, 18))
         self.add_files_button.clicked.connect(self._choose_files)
         self.add_folder_button = QPushButton("添加文件夹")
         self.add_folder_button.setObjectName("AddFolderButton")
-        self.add_folder_button.setIcon(self._configuration_icon("folder-plus", "#6941c6"))
+        self.add_folder_button.setIcon(self._configuration_icon("folder-plus", "#7653aa"))
         self.add_folder_button.setIconSize(QSize(18, 18))
         self.add_folder_button.clicked.connect(self._choose_folder)
         add_button_row = QHBoxLayout()
@@ -1263,6 +1265,8 @@ class MainWindow(QMainWindow):
         self.invert_button = QPushButton("反选")
         self.invert_button.setObjectName("InvertButton")
         self.invert_button.clicked.connect(self._invert)
+        for button in (self.start_button, self.stop_button, self.clear_button, self.select_all_button, self.invert_button):
+            button.setFixedHeight(38)
         action_layout.addWidget(self.start_button)
         action_layout.addWidget(self.stop_button)
         action_layout.addWidget(self.clear_button)
@@ -1277,6 +1281,7 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
         self.table.itemClicked.connect(self._on_table_item_clicked)
         self.table.viewport().installEventFilter(self)
         self.table.setItemDelegateForColumn(COL_SELECT, CenteredCheckBoxDelegate(self.table))
@@ -1298,7 +1303,13 @@ class MainWindow(QMainWindow):
             self.table.setColumnWidth(column, width)
         header.setSectionResizeMode(COL_FILE, QHeaderView.Stretch)
         header.setSectionResizeMode(COL_OUTPUT, QHeaderView.Stretch)
-        layout.addWidget(self.table, 1)
+        queue_panel = QFrame()
+        queue_panel.setObjectName("QueuePanel")
+        queue_layout = QVBoxLayout(queue_panel)
+        queue_layout.setContentsMargins(8, 8, 8, 8)
+        queue_layout.setSpacing(0)
+        queue_layout.addWidget(self.table)
+        layout.addWidget(queue_panel, 1)
 
         bottom = QHBoxLayout()
         self.status_label = QLabel()
@@ -1328,41 +1339,43 @@ class MainWindow(QMainWindow):
         chevron_url = chevron_icon.as_posix() if chevron_icon.exists() else ""
         stylesheet = (
             """
-            QMainWindow { background: #edf6f7; font-family: "Microsoft YaHei UI"; }
+            QMainWindow { background: #eeeeee; font-family: "Microsoft YaHei UI"; }
             QLabel { color: #1f2933; }
             QLabel#Title { font-size: 25px; font-weight: 800; color: #102027; }
             QLabel#Subtitle, QLabel#Hint, QLabel#Status { color: #667782; }
             QLabel#TotalEta { color: #3f5f66; font-weight: 700; }
             QLabel#CopyToast { background: transparent; color: transparent; border-radius: 8px; padding: 6px 12px; font-weight: 800; }
-            QLabel#CopyToast[active="true"] { background: #16a34a; color: #ffffff; }
+            QLabel#CopyToast[active="true"] { background: #4b5563; color: #ffffff; }
             QLabel#FieldLabel { color: #29434b; font-weight: 700; }
-            QFrame#Sidebar { background: #ffffff; border: 1px solid #dce5eb; border-radius: 16px; }
-            QFrame#SidebarSeparator { background: #e0e7ec; border: none; }
-            QFrame#SidebarFormat { background: #f4f7f9; border: none; border-radius: 9px; }
+            QFrame#Sidebar { background: #ffffff; border: none; border-radius: 16px; }
+            QFrame#SidebarSeparator { background: #e5e5e5; border: none; }
+            QFrame#SidebarFormat { background: #f4f4f4; border: none; border-radius: 9px; }
             QLabel#SidebarFormatLabel { font-size: 12px; color: #293c49; }
-            QLabel#WorkflowNumber { background: #edf2f5; color: #293c49; border-radius: 15px; font-size: 13px; font-weight: 600; }
+            QLabel#WorkflowNumber { background: #eeeeee; color: #374151; border-radius: 15px; font-size: 13px; font-weight: 600; }
             QLabel#WorkflowLabel { color: #293c49; font-size: 14px; }
-            QFrame#WorkflowConnector { background: #dae3eb; border: none; }
-            QFrame#Panel, QFrame#ActionPanel { background: #ffffff; border: 1px solid #d7e7ea; border-radius: 8px; }
-            QLabel#BrandMark { background: #d9f6ef; color: #087f76; border: 1px solid #96ded1; border-radius: 12px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; qproperty-alignment: AlignCenter; font-size: 25px; font-weight: 700; }
+            QFrame#WorkflowConnector { background: #e5e5e5; border: none; }
+            QFrame#QueuePanel { background: #ffffff; border: none; border-radius: 16px; }
+            QFrame#Panel, QFrame#ActionPanel { background: #ffffff; border: none; border-radius: 12px; }
+            QLabel#BrandMark { background: #eeeeee; color: #374151; border: none; border-radius: 12px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; qproperty-alignment: AlignCenter; font-size: 25px; font-weight: 700; }
             QLabel#BrandTitle { color: #102027; font-size: 20px; font-weight: 700; }
             QLabel#BrandSubtitle { color: #6b7e86; font-size: 12px; }
             QLabel#SideSectionTitle { color: #6b7e86; font-size: 14px; font-weight: 600; }
-            QLabel#PlatformBlue { background: #e8faf7; color: #0f766e; border: 1px solid #b8ead7; border-radius: 8px; padding: 12px; font-weight: 800; }
-            QLabel#WorkflowStep { background: #f7fbfc; color: #38545c; border: 1px solid #d7e7ea; border-radius: 8px; padding: 9px 11px; font-weight: 700; }
-            QLineEdit, QComboBox { background: #fbfefd; border: 1px solid #cfe3e6; border-radius: 6px; padding: 9px; color: #102027; selection-background-color: #14b8a6; }
-            QLineEdit:focus, QComboBox:focus { border: 1px solid #14b8a6; background: #ffffff; }
+            QLabel#PlatformBlue { background: #f3f3f3; color: #374151; border: none; border-radius: 8px; padding: 12px; font-weight: 700; }
+            QLabel#WorkflowStep { background: #f3f3f3; color: #374151; border: none; border-radius: 8px; padding: 9px 11px; font-weight: 700; }
+            QLineEdit, QComboBox { background: #f4f4f4; border: none; border-radius: 8px; padding: 9px; color: #1f2937; selection-background-color: #d1d5db; selection-color: #1f2937; }
+            QLineEdit:focus, QComboBox:focus { background: #e8e8e8; }
             QComboBox { padding-right: 34px; }
             QComboBox::drop-down {
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 30px;
-                border-left: 1px solid #d4e5e7;
+                border: none;
                 border-top-right-radius: 6px;
                 border-bottom-right-radius: 6px;
-                background: #f1fbfa;
+                background: transparent;
             }
-            QComboBox::drop-down:hover { background: #dff8f5; }
+            QComboBox::drop-down:hover { background: #e5e5e5; }
+            QComboBox QAbstractItemView { background: #ffffff; border: none; padding: 4px; selection-background-color: #e5e7eb; selection-color: #1f2937; outline: none; }
             QComboBox::down-arrow {
                 image: url(__CHEVRON_ICON__);
                 width: 14px;
@@ -1395,42 +1408,50 @@ class MainWindow(QMainWindow):
                 padding: 0;
                 selection-background-color: transparent;
             }
-            QPushButton { background: #f8fbfc; color: #31454c; border: 1px solid #d5e7ea; border-radius: 6px; padding: 9px 14px; min-width: 82px; }
-            QPushButton:hover { background: #e8faf7; border: 1px solid #9edbd3; }
-            QPushButton:disabled { color: #9aa9ad; background: #f1f5f6; border: 1px solid #dde8ea; }
-            QPushButton#PrimaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f766e, stop:1 #2563eb); border: 1px solid #0f766e; color: #ffffff; font-weight: 800; }
-            QPushButton#SideButton { background: #0b9e90; border: 1px solid #0b9e90; border-radius: 20px; padding: 0 12px; color: #ffffff; font-size: 14px; font-weight: 600; }
-            QPushButton#SideButton:hover { background: #09887c; border-color: #09887c; }
-            QPushButton#SideSettingsButton { background: #f4f7f9; border: none; border-radius: 20px; padding: 0 12px; color: #405362; font-size: 14px; font-weight: 600; }
-            QPushButton#SideSettingsButton:hover { background: #eaf3f0; }
-            QPushButton#SideSettingsButton:focus { background: #e5f2ed; border: none; }
-            QPushButton#SideButton:focus { background: #07877b; border-color: #07877b; }
-            QPushButton#ChooseButton { background: #eefdf8; border: 1px solid #aee9d7; color: #087f76; font-weight: 800; }
-            QFrame#ConfigurationPanel { background: #ffffff; border: 1px solid #dce5e9; border-radius: 12px; }
+            QPushButton { background: #f1f1f1; color: #374151; border: none; border-radius: 18px; padding: 9px 14px; min-width: 82px; }
+            QPushButton:hover, QPushButton:focus { background: #e5e5e5; }
+            QPushButton:pressed { background: #d9d9d9; }
+            QPushButton:disabled { color: #9ca3af; background: #f4f4f4; border: none; }
+            QPushButton#PrimaryButton { background: #6075c8; border: none; color: #ffffff; font-weight: 700; }
+            QPushButton#PrimaryButton:hover, QPushButton#PrimaryButton:focus { background: #5065b5; }
+            QPushButton#PrimaryButton:disabled { background: #e5e7eb; color: #9ca3af; }
+            QPushButton#SideButton { background: #6075c8; border: none; border-radius: 20px; padding: 0 12px; color: #ffffff; font-size: 14px; font-weight: 600; }
+            QPushButton#SideButton:hover, QPushButton#SideButton:focus { background: #5065b5; }
+            QPushButton#SideSettingsButton { background: #f1f1f1; border: none; border-radius: 20px; padding: 0 12px; color: #374151; font-size: 14px; font-weight: 600; }
+            QPushButton#SideSettingsButton:hover, QPushButton#SideSettingsButton:focus { background: #e5e5e5; }
+            QPushButton#ChooseButton { background: #edf2ff; border: none; color: #5267ae; font-weight: 600; }
+            QPushButton#ChooseButton:hover, QPushButton#ChooseButton:focus { background: #e0e8ff; }
+            QFrame#ConfigurationPanel { background: #ffffff; border: none; border-radius: 16px; }
             QLabel#ConfigurationHeading { font-size: 20px; font-weight: 700; color: #102027; }
-            QLabel#ConfigurationStep { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #c5f2ed, stop:1 #8ed7cf); border: 1px solid #87cfc7; border-radius: 21px; font-size: 19px; font-weight: 700; color: #123e48; }
-            QFrame#ConfigurationDivider { background: #e1e7eb; border: none; }
-            QFrame#ConfigurationPanel QLineEdit, QFrame#ConfigurationPanel QComboBox { background: #ffffff; border-color: #d5dfe5; }
+            QLabel#ConfigurationStep { background: #eeeeee; border: none; border-radius: 21px; font-size: 19px; font-weight: 700; color: #374151; }
+            QFrame#ConfigurationDivider { background: #e5e5e5; border: none; }
+            QFrame#ConfigurationPanel QLineEdit, QFrame#ConfigurationPanel QComboBox { background: #f4f4f4; border: none; }
+            QFrame#ConfigurationPanel QLineEdit:focus, QFrame#ConfigurationPanel QComboBox:focus { background: #e8e8e8; }
             QFrame#ConfigurationPanel QComboBox::drop-down { background: transparent; border-left: none; }
-            QPushButton#AddFileButton, QPushButton#AddFolderButton { min-width: 100px; background: #fff8e8; border: 1px solid #f6d48b; color: #a45b00; font-weight: 700; }
-            QPushButton#AddFileButton:hover { background: #fff0cd; border-color: #e5b64f; }
-            QPushButton#AddFolderButton { background: #f3efff; border: 1px solid #ddd2ff; color: #6941c6; }
-            QPushButton#AddFolderButton:hover { background: #e9e1ff; }
-            QCheckBox#FormatChoice { border: 1px solid #d8e3e8; border-radius: 8px; background: #fbfdfe; padding: 0 10px; spacing: 8px; font-weight: 600; }
-            QCheckBox#FormatChoice:checked { background: #effbf8; border-color: #a3ded4; }
-            QCheckBox#FormatChoice:hover { border-color: #72c8ba; }
-            QFrame#ConfigurationPanel QCheckBox::indicator { width: 18px; height: 18px; border: 1px solid #a8b2b9; border-radius: 4px; background: #ffffff; }
-            QFrame#ConfigurationPanel QCheckBox::indicator:checked { background: #07975b; border-color: #07975b; image: url(__CHECK_ICON__); }
-            QPushButton#StopButton { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; font-weight: 800; }
-            QPushButton#ClearButton { background: #f3f7f9; border: 1px solid #d5e3e7; color: #42545b; font-weight: 800; }
-            QPushButton#SelectButton { background: #e9fbf4; border: 1px solid #b8ead7; color: #047857; font-weight: 800; }
-            QPushButton#InvertButton { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: 800; }
-            QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: #eefdf8; border: 1px solid #b8ead7; }
-            QPushButton#LocateButton:hover { background: #d9fbf3; border: 1px solid #5eead4; }
-            QTableWidget { background: #ffffff; alternate-background-color: #f6fbfc; border: 1px solid #d7e7ea; border-radius: 8px; gridline-color: #e6f0f2; selection-background-color: #e0f2fe; selection-color: #0f172a; }
-            QHeaderView::section { background: #e9f4f6; color: #38545c; padding: 10px 8px; border: none; border-right: 1px solid #d7e7ea; font-weight: 800; }
-            QProgressBar { background: #e7f1f3; border: 1px solid #cfe3e6; border-radius: 6px; height: 16px; text-align: center; color: #253f46; }
-            QProgressBar::chunk { background: #14b8a6; border-radius: 5px; }
+            QPushButton#AddFileButton, QPushButton#AddFolderButton { min-width: 100px; border: none; font-weight: 600; }
+            QPushButton#AddFileButton { background: #fff0e3; color: #a65e28; }
+            QPushButton#AddFileButton:hover, QPushButton#AddFileButton:focus { background: #ffe4cc; }
+            QPushButton#AddFolderButton { background: #f1ebfc; color: #7653aa; }
+            QPushButton#AddFolderButton:hover, QPushButton#AddFolderButton:focus { background: #e7dcf7; }
+            QCheckBox#FormatChoice { border: none; border-radius: 8px; background: #f4f4f4; padding: 0 10px; spacing: 8px; font-weight: 600; }
+            QCheckBox#FormatChoice:checked { background: #edf2ff; }
+            QCheckBox#FormatChoice:hover, QCheckBox#FormatChoice:focus { background: #e0e8ff; }
+            QFrame#ConfigurationPanel QCheckBox::indicator { width: 18px; height: 18px; border: none; border-radius: 4px; background: #d1d5db; }
+            QFrame#ConfigurationPanel QCheckBox::indicator:checked { background: #6075c8; image: url(__CHECK_ICON__); }
+            QPushButton#StopButton { background: #fff1f2; border: none; color: #be123c; font-weight: 700; }
+            QPushButton#StopButton:disabled { background: #f4f4f4; color: #9ca3af; }
+            QPushButton#ClearButton { background: #eeeeee; border: none; color: #374151; font-weight: 600; }
+            QPushButton#ClearButton:hover { background: #e2e2e2; }
+            QPushButton#SelectButton { background: #edf2ff; border: none; color: #5267ae; font-weight: 600; }
+            QPushButton#SelectButton:hover, QPushButton#SelectButton:focus { background: #e0e8ff; }
+            QPushButton#InvertButton { background: #f1ebfc; border: none; color: #7653aa; font-weight: 600; }
+            QPushButton#InvertButton:hover, QPushButton#InvertButton:focus { background: #e7dcf7; }
+            QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: #f1f1f1; border: none; border-radius: 14px; }
+            QPushButton#LocateButton:hover { background: #e5e5e5; }
+            QTableWidget { background: #ffffff; alternate-background-color: #fafafa; border: none; border-radius: 12px; gridline-color: #ffffff; selection-background-color: #e5e7eb; selection-color: #1f2937; }
+            QHeaderView::section { background: #f4f4f4; color: #374151; padding: 10px 8px; border: none; font-weight: 600; }
+            QProgressBar { background: #e3e3e3; border: none; border-radius: 6px; height: 16px; text-align: center; color: #374151; }
+            QProgressBar::chunk { background: #9ca3af; border-radius: 5px; }
             QCheckBox { color: #29434b; font-weight: 700; }
             """
         )

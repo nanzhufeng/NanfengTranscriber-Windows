@@ -1,0 +1,13 @@
+{
+  "version": "1.0.6",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.6-Setup.exe",
+  "bytes": 160883612,
+  "sha256": "4c9e2b809ad62bbd3f4bdf55c19430c29aa37a500724788a853e2a5245ac0e04",
+  "authenticode": "NotSigned",
+  "automatedTests": 50,
+  "releaseContractChecks": 14,
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use"
+}

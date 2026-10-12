@@ -4,19 +4,19 @@
 
 ## 软件界面预览
 
-Windows v1.0.5 当前构建运行截图，主窗口 1600×1000。
+Windows v1.0.6 当前构建运行截图，主窗口 1600×1000。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.5.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.6.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.5.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.6.png)
 
-## v1.0.5 更新
+## v1.0.6 更新
 
-- 两套本地转写模式和固定字幕对齐器；首次使用中文精确时按需安装独立运行环境，无需手动安装 Python。
-- 主界面、侧栏和设置重新排版；下拉框支持再次点击关闭，选中项与开关焦点更清晰。
-- 运行方式统一显示为“GPU 快速 / CPU 稳定”。
-- 继续支持直接输出、可选视频同名子文件夹，以及保存到视频所在目录。
-- SRT 使用逐词时间戳分成短字幕，按停顿与句末切分，避免长段铺屏及时间重叠。
+- 页面改为纯浅灰底，内容采用无描边白色分区，输入框使用浅灰填充。
+- 按钮保留颜色：柔和蓝色主操作、浅橙/浅紫导入，以及红色停止提示。
+- 设置、开关、导出勾选与模式菜单采用清晰的选中状态，移除绿色主题强调。
+- 操作按钮圆角与高度统一，队列使用完整的圆角白色工作区。
+- 沿用精简安装包和按需安装的独立本地模型运行环境。
 
 ## 功能
 
@@ -37,7 +37,7 @@ Windows v1.0.5 当前构建运行截图，主窗口 1600×1000。
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.5-Setup.exe`，双击安装。Release 提供安装程序本体及 SHA-256 校验；安装说明以本 README 为准。
+从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.6-Setup.exe`，双击安装。Release 提供安装程序本体及 SHA-256 校验；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 
@@ -49,7 +49,7 @@ Windows 安装包未签名，系统可能显示未知发布者提示。
 
 旧版本 Whisper 选择自动迁移为通用快速；旧缓存不再作为可选模型加载。日语精确字幕额外需要 `nagisa` 分词依赖，未安装时请使用快速模式的原生时间戳；精确字幕失败会提示原因，不伪造对齐时间。
 
-GitHub v1.0.4 为历史发布版本；v1.0.5 发布状态见 [PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
+历史版本见 GitHub Releases；当前版本状态见 [PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 
 环境要求：Python 3.11+、FFmpeg/FFprobe，以及 NVIDIA GPU 可选运行库。
 
