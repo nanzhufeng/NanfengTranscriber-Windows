@@ -19,8 +19,9 @@ try:
 except ImportError:  # macOS 迁移时保留 Qt 的系统提示音回退。
     winsound = None
 
-from PySide6.QtCore import QEvent, QObject, QRect, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon
+from PySide6.QtCore import QEvent, QObject, QRect, QRectF, QSize, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -36,11 +37,17 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QRadioButton,
+    QScrollArea,
+    QGraphicsDropShadowEffect,
     QProgressBar,
     QProgressDialog,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionButton,
+    QStyleOptionComboBox,
+    QStyleOptionViewItem,
+    QStylePainter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -61,9 +68,11 @@ from .transcriber import (
 )
 
 
+from .model_modes import MODE_OPTIONS, mode_description, model_for_mode
+
 APP_NAME = "南枫转写"
-APP_VERSION = "1.0.4"
-APP_DEVELOPED_AT = "2026-09-15 23:03"
+APP_VERSION = "1.0.5"
+APP_DEVELOPED_AT = "2026-10-12 13:20"
 GITHUB_REPOSITORY = "nanzhufeng/NanfengTranscriber-Windows"
 GITHUB_REPOSITORY_URL = f"https://github.com/{GITHUB_REPOSITORY}"
 SUPPORTED_EXTENSIONS = {
@@ -82,9 +91,9 @@ SUPPORTED_EXTENSIONS = {
     ".flac",
     ".ogg",
 }
-MODEL_OPTIONS = ["base", "small", "medium", "large-v3"]
+MODEL_OPTIONS = MODE_OPTIONS
 LANGUAGE_OPTIONS = ["中文", "自动识别", "英文", "日语", "韩语"]
-COMPUTE_MODE_OPTIONS = ["GPU 优先", "CPU 稳定"]
+COMPUTE_MODE_OPTIONS = ["GPU 快速", "CPU 稳定"]
 REQUIRED_DEPENDENCIES = {
     "faster_whisper": "faster-whisper",
     "docx": "python-docx",
@@ -362,84 +371,190 @@ class AppSettingsDialog(QDialog):
         auto_open_output: bool,
         create_video_subfolder: bool = False,
         save_beside_video: bool = False,
+        precision_subtitles: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("设置")
         self.setModal(True)
-        self.setMinimumWidth(420)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setMinimumWidth(660)
         self.setStyleSheet(
-            "QDialog { background: #ffffff; }"
-            "QLabel#SettingsTitle { color: #102027; font-size: 18px; font-weight: 800; }"
-            "QLabel#SettingsHint { color: #667782; }"
-            "QFrame#SettingsSection { background: #f7fbfc; border: 1px solid #d7e7ea; border-radius: 8px; }"
-            "QCheckBox { color: #29434b; font-weight: 700; spacing: 8px; }"
-            "QPushButton#SettingsSave { min-width: 104px; background: #0f766e; color: #ffffff; "
-            "border: 1px solid #0f766e; border-radius: 6px; padding: 9px 18px; font-weight: 800; }"
-            "QPushButton#SettingsCancel { min-width: 104px; background: #f8fbfc; color: #42545b; "
-            "border: 1px solid #d5e7ea; border-radius: 6px; padding: 9px 18px; }"
+            "QDialog { background: transparent; }"
+            "QFrame#SettingsCard { background: #ffffff; border: 1px solid #dce3e8; border-radius: 18px; }"
+            "QLabel { color: #182430; font-size: 14px; background: transparent; border: none; }"
+            "QLabel#SettingsTitle { font-size: 22px; font-weight: 700; }"
+            "QLabel#SectionTitle { font-size: 17px; font-weight: 700; }"
+            "QLabel#SettingsHint { color: #687684; font-size: 12px; }"
+            "QFrame#SettingsSection { background: #f4f7f9; border: none; border-radius: 12px; }"
+            "QScrollArea, QWidget#SettingsContent { background: transparent; border: none; }"
+            "QRadioButton { color: #182430; font-size: 14px; spacing: 10px; background: transparent; }"
+            "QRadioButton::indicator { width: 18px; height: 18px; border-radius: 10px; border: 1px solid #aeb8c2; background: white; }"
+            "QRadioButton::indicator:checked { border: 5px solid #0a8778; width: 10px; height: 10px; }"
+            "QRadioButton:focus { color: #087b6e; }"
+            "QPushButton { color: #182430; font-size: 14px; font-weight: 600; background: #fafcfd; border: 1px solid #d5dfe7; border-radius: 20px; padding: 0 18px; }"
+            "QPushButton:hover { background: #eef5f3; border-color: #9ac8bb; }"
+            "QPushButton:focus { border: 2px solid #0a8778; }"
+            "QPushButton#SettingsSave { background: #098579; color: white; border-color: #098579; }"
+            "QPushButton#SettingsSave:hover { background: #077466; }"
+            "QPushButton#SettingsClose { border: none; background: transparent; border-radius: 16px; padding: 0; }"
+            "QPushButton#SettingsClose:hover { background: #eef2f4; }"
+            "QPushButton#SettingsReview { text-align: left; border: none; border-radius: 10px; background: #f4f7f9; padding: 0 16px; }"
         )
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 20)
-        layout.setSpacing(14)
-
-        title = QLabel("输出与完成行为")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 16, 16, 16)
+        card = QFrame()
+        card.setObjectName("SettingsCard")
+        shadow = QGraphicsDropShadowEffect(card)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(20, 40, 55, 32))
+        card.setGraphicsEffect(shadow)
+        outer.addWidget(card)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(16)
+        heading = QHBoxLayout()
+        title = QLabel("设置")
         title.setObjectName("SettingsTitle")
-        hint = QLabel("这些选项会在下次启动时继续生效。")
-        hint.setObjectName("SettingsHint")
-        layout.addWidget(title)
-        layout.addWidget(hint)
+        self._title_widget = title
+        title.installEventFilter(self)
+        heading.addWidget(title)
+        heading.addStretch()
+        close = QPushButton()
+        close.setObjectName("SettingsClose")
+        close.setIcon(parent._configuration_icon("x", "#7b8791"))
+        close.setAccessibleName("关闭设置")
+        close.setFixedSize(32, 32)
+        close.clicked.connect(self.reject)
+        heading.addWidget(close)
+        layout.addLayout(heading)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget()
+        content.setObjectName("SettingsContent")
+        body = QVBoxLayout(content)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(12)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
 
-        section = QFrame()
-        section.setObjectName("SettingsSection")
-        section_layout = QVBoxLayout(section)
-        section_layout.setContentsMargins(16, 14, 16, 14)
-        section_layout.setSpacing(12)
-        self.completion_sound_check = QCheckBox("完成提示音")
-        self.completion_sound_check.setChecked(completion_sound)
-        self.completion_dialog_check = QCheckBox("完成提示")
-        self.completion_dialog_check.setChecked(completion_dialog)
-        self.auto_open_output_check = QCheckBox("完成后自动打开目录")
-        self.auto_open_output_check.setChecked(auto_open_output)
-        self.auto_open_output_check.setToolTip("仅在本次没有失败、无文字或主动停止项目时，定位并选中最近完成的导出文件。")
-        section_layout.addWidget(self.completion_sound_check)
-        section_layout.addWidget(self.completion_dialog_check)
-        section_layout.addWidget(self.auto_open_output_check)
-        self.save_beside_video_check = QCheckBox("保存到视频所在目录")
+        def section(name, icon):
+            frame = QFrame()
+            frame.setObjectName("SettingsSection")
+            box = QVBoxLayout(frame)
+            box.setContentsMargins(18, 16, 18, 18)
+            box.setSpacing(12)
+            row = QHBoxLayout()
+            badge = QLabel()
+            badge.setFixedSize(38, 38)
+            badge.setAlignment(Qt.AlignCenter)
+            badge.setStyleSheet("background: #d6f3eb; border-radius: 19px;")
+            badge.setPixmap(parent._configuration_icon(icon, "#174f52").pixmap(22, 22))
+            row.addWidget(badge)
+            label = QLabel(name)
+            label.setObjectName("SectionTitle")
+            row.addWidget(label)
+            row.addStretch()
+            box.addLayout(row)
+            return frame, box
+
+        def hint(box, text):
+            label = QLabel(text)
+            label.setObjectName("SettingsHint")
+            label.setWordWrap(True)
+            box.addWidget(label)
+            return label
+
+        def toggle(box, text, checked):
+            row = QHBoxLayout()
+            label = QLabel(text)
+            label.setWordWrap(True)
+            row.addWidget(label, 1)
+            switch = PolishSwitch()
+            switch.setAccessibleName(text)
+            switch.setChecked(checked)
+            row.addWidget(switch)
+            box.addLayout(row)
+            label.setBuddy(switch)
+            return switch
+
+        output, output_box = section("保存与目录", "folder")
+        output_box.addWidget(QLabel("保存位置"))
+        self.software_path_radio = QRadioButton("软件指定路径", output)
+        self.save_beside_video_check = QRadioButton("视频所在目录", output)
+        self.software_path_radio.setChecked(not save_beside_video)
         self.save_beside_video_check.setChecked(save_beside_video)
-        self.save_beside_video_check.setToolTip("勾选：保存到每个视频所在目录；不勾选：使用主界面的指定保存路径。")
-        section_layout.addWidget(self.save_beside_video_check)
-        location_hint = QLabel("不勾选时使用软件指定路径；勾选后每个视频分别保存到原目录。")
-        location_hint.setObjectName("SettingsHint")
-        location_hint.setWordWrap(True)
-        section_layout.addWidget(location_hint)
-        self.create_video_subfolder_check = QCheckBox("新建视频同名子文件夹")
-        self.create_video_subfolder_check.setChecked(create_video_subfolder)
-        section_layout.addWidget(self.create_video_subfolder_check)
-        output_hint = QLabel("默认关闭：结果直接保存到目标目录；开启后按视频分文件夹。")
-        output_hint.setObjectName("SettingsHint")
-        output_hint.setWordWrap(True)
-        section_layout.addWidget(output_hint)
-        layout.addWidget(section)
-        review = QLabel("功能审阅：保存位置与子文件夹均保留为可选设置，入口位于此页。\n默认不建子文件夹，减少目录层级；需要分类时再开启。")
-        review.setObjectName("SettingsHint")
-        review.setWordWrap(True)
-        layout.addWidget(review)
+        output_box.addWidget(self.software_path_radio)
+        output_box.addWidget(self.save_beside_video_check)
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: #dde5eb;")
+        output_box.addWidget(line)
+        self.create_video_subfolder_check = toggle(output_box, "新建视频同名子文件夹", create_video_subfolder)
+        hint(output_box, "关闭时直接保存到目标目录。")
+        body.addWidget(output)
+        lower = QHBoxLayout()
+        lower.setSpacing(12)
+        subtitles, subtitles_box = section("字幕处理", "file")
+        self.precision_subtitles_check = toggle(subtitles_box, "快速模式精确字幕对齐", precision_subtitles)
+        hint(subtitles_box, "中文精确模式自动对齐；开启后快速模式也对齐，耗时增加。")
+        subtitles_box.addStretch()
+        completion, completion_box = section("完成提醒", "bell")
+        self.completion_sound_check = toggle(completion_box, "完成提示音", completion_sound)
+        self.completion_dialog_check = toggle(completion_box, "完成提示", completion_dialog)
+        self.auto_open_output_check = toggle(completion_box, "完成后定位结果", auto_open_output)
+        self.auto_open_output_check.setToolTip("仅在本次没有失败、无文字或主动停止项目时，定位并选中最近完成的导出文件。")
+        hint(completion_box, "全部完成后，选中最近导出文件。")
+        lower.addWidget(subtitles, 1)
+        lower.addWidget(completion, 1)
+        body.addLayout(lower)
+        self.review_button = QPushButton("功能审阅")
+        self.review_button.setObjectName("SettingsReview")
+        self.review_button.setIcon(parent._configuration_icon("list", "#405362"))
+        self.review_button.setCheckable(True)
+        self.review_button.setFixedHeight(46)
+        review_row = QHBoxLayout(self.review_button)
+        review_row.setContentsMargins(0, 0, 16, 0)
+        review_row.addStretch()
+        self.review_arrow = QLabel()
+        self.review_arrow.setPixmap(parent._configuration_icon("chevron-down", "#405362").pixmap(18, 18))
+        self.review_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
+        review_row.addWidget(self.review_arrow)
+        body.addWidget(self.review_button)
+        self.review_details = hint(body, "保留：保存位置、子文件夹、字幕对齐与完成提醒均为可选设置，减少主界面常驻按键。\n入口：转写模式和导出格式保留在主界面；真实模型名仅在展开列表后显示。\n理由：两套识别模型覆盖精度与速度需求，固定对齐器按需调用。")
+        self.review_details.hide()
+        self.review_button.toggled.connect(self.review_details.setVisible)
+        self.review_button.toggled.connect(lambda opened: self.review_arrow.setPixmap(parent._configuration_icon("chevron-up" if opened else "chevron-down", "#405362").pixmap(18, 18)))
 
         buttons = QHBoxLayout()
         about_button = QPushButton("关于南枫转写")
         about_button.setObjectName("SettingsCancel")
+        about_button.setIcon(parent._configuration_icon("info", "#405362"))
+        about_button.setFixedHeight(40)
         about_button.clicked.connect(self._open_about)
         buttons.addWidget(about_button)
         buttons.addStretch(1)
         cancel_button = QPushButton("取消")
         cancel_button.setObjectName("SettingsCancel")
+        cancel_button.setFixedSize(94, 40)
         cancel_button.clicked.connect(self.reject)
         save_button = QPushButton("保存")
         save_button.setObjectName("SettingsSave")
+        save_button.setFixedSize(108, 40)
         save_button.clicked.connect(self.accept)
         buttons.addWidget(cancel_button)
         buttons.addWidget(save_button)
         layout.addLayout(buttons)
+        self.resize(700, min(730, QApplication.primaryScreen().availableGeometry().height() - 48))
+
+    def eventFilter(self, watched, event):
+        if watched is getattr(self, "_title_widget", None) and event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            if self.windowHandle():
+                self.windowHandle().startSystemMove()
+            return True
+        return super().eventFilter(watched, event)
 
     def _open_about(self) -> None:
         AboutDialog(self).exec()
@@ -451,13 +566,61 @@ class AppSettingsDialog(QDialog):
             "auto_open_output": self.auto_open_output_check.isChecked(),
             "create_video_subfolder": self.create_video_subfolder_check.isChecked(),
             "save_beside_video": self.save_beside_video_check.isChecked(),
+            "precision_subtitles": self.precision_subtitles_check.isChecked(),
         }
 
 
-class CenterComboBox(QComboBox):
+class ComboTriggerFilter(QObject):
+    def __init__(self, combo):
+        super().__init__(combo)
+        self.combo = combo
+
+    def eventFilter(self, watched, event):
+        return self.combo.filter_trigger_click(event)
+
+
+class ToggleComboBox(QComboBox):
+    """Consume a second trigger click before Qt dismisses and reopens its popup."""
+    def __init__(self):
+        super().__init__()
+        self._trigger_press_active = False
+        self._trigger_filter = ComboTriggerFilter(self)
+        QApplication.instance().installEventFilter(self._trigger_filter)
+
+    def filter_trigger_click(self, event):
+        if event.type() == QEvent.MouseButtonRelease:
+            self._trigger_press_active = False
+        if (event.type() == QEvent.MouseButtonPress
+                and event.button() == Qt.LeftButton
+                and not self._trigger_press_active
+                and self.view().isVisible()
+                and self.rect().contains(self.mapFromGlobal(event.globalPosition().toPoint()))):
+            self.hidePopup()
+            self._trigger_press_active = True
+            event.accept()
+            return True
+        return False
+
+    def _toggle_popup(self):
+        if self._trigger_press_active:
+            return
+        self._trigger_press_active = True
+        if self.view().isVisible():
+            self.hidePopup()
+        else:
+            self.showPopup()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._toggle_popup()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+
+class CenterComboBox(ToggleComboBox):
     def __init__(self) -> None:
         super().__init__()
-        self._popup_open = False
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setAlignment(Qt.AlignCenter)
@@ -470,24 +633,117 @@ class CenterComboBox(QComboBox):
             return True
         return super().eventFilter(watched, event)
 
-    def mousePressEvent(self, event) -> None:
-        self._toggle_popup()
-        event.accept()
+def draw_mode_lines(painter, rect, name, model, selected=False):
+    painter.save()
+    title_font = QFont(painter.font())
+    title_font.setPixelSize(13)
+    title_font.setWeight(QFont.DemiBold)
+    painter.setFont(title_font)
+    painter.setPen(QColor("#086b55") if selected else QColor("#405362"))
+    painter.drawText(QRect(rect.x(), rect.y(), rect.width(), rect.height() // 2), Qt.AlignCenter, name)
+    model_font = QFont(title_font)
+    model_font.setPixelSize(11)
+    model_font.setWeight(QFont.Normal)
+    painter.setFont(model_font)
+    painter.setPen(QColor("#42645a") if selected else QColor("#647581"))
+    painter.drawText(QRect(rect.x(), rect.y() + rect.height() // 2, rect.width(), rect.height() // 2), Qt.AlignCenter, model)
+    painter.restore()
 
-    def showPopup(self) -> None:
-        self._popup_open = True
-        super().showPopup()
 
-    def hidePopup(self) -> None:
-        self._popup_open = False
-        super().hidePopup()
+class ModeItemDelegate(QStyledItemDelegate):
+    def sizeHint(self, option, index):
+        return QSize(210, 52)
 
-    def _toggle_popup(self) -> None:
-        if self._popup_open or self.view().isVisible():
-            self.hidePopup()
-        else:
-            self.showPopup()
+    def paint(self, painter, option, index):
+        selected = bool(option.state & QStyle.State_Selected)
+        hovered = bool(option.state & QStyle.State_MouseOver)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setFont(option.font)
+        painter.fillRect(option.rect, QColor("#ffffff"))
+        surface = option.rect.adjusted(4, 2, -4, -2)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#e5f5ee") if selected else QColor("#f0f3f2") if hovered else QColor("#ffffff"))
+        painter.drawRoundedRect(surface, 6, 6)
+        if option.state & QStyle.State_HasFocus:
+            painter.setPen(QColor("#07975b"))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(surface, 6, 6)
+        draw_mode_lines(painter, option.rect.adjusted(8, 4, -8, -4), index.data(), index.data(Qt.UserRole), selected)
+        painter.restore()
 
+
+class FormatChoice(QCheckBox):
+    def hitButton(self, position):
+        return self.rect().contains(position)
+
+
+class PolishSwitch(QCheckBox):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(52, 30)
+        self.setAccessibleName("翻译润色")
+        self.setCursor(Qt.PointingHandCursor)
+        self._keyboard_focus = False
+
+    def focusInEvent(self, event):
+        self._keyboard_focus = event.reason() in (Qt.TabFocusReason, Qt.BacktabFocusReason, Qt.ShortcutFocusReason)
+        super().focusInEvent(event)
+        self.update()
+
+    def mousePressEvent(self, event):
+        self._keyboard_focus = False
+        super().mousePressEvent(event)
+        self.update()
+
+    def keyPressEvent(self, event):
+        self._keyboard_focus = True
+        super().keyPressEvent(event)
+        self.update()
+
+    def hitButton(self, position):
+        return self.rect().contains(position)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        track = QPainterPath()
+        track.addRoundedRect(QRectF(1.5, 1.5, self.width() - 3, self.height() - 3), 13.5, 13.5)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#07975b") if self.isChecked() else QColor("#dce1e5"))
+        painter.drawPath(track)
+        if self.hasFocus() and self._keyboard_focus:
+            painter.setPen(QPen(QColor("#087b6e"), 2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(track)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawEllipse(27 if self.isChecked() else 5, 5, 20, 20)
+
+
+class TranscriptionModeCombo(ToggleComboBox):
+    """Show only the Chinese name when closed; model details live in the menu."""
+    def __init__(self):
+        super().__init__()
+        self.setItemDelegate(ModeItemDelegate(self))
+        self.setFixedSize(150, 36)
+        self.view().setMinimumWidth(220)
+        self.addItem("中文精确", "Qwen3-ASR-1.7B")
+        self.addItem("通用快速", "Whisper large-v3-turbo")
+        for index in range(self.count()):
+            self.setItemData(index, mode_description(self.itemText(index))[0], Qt.ToolTipRole)
+        self.currentTextChanged.connect(lambda name: self.setToolTip(mode_description(name)[0]))
+        self.setToolTip(mode_description(self.currentText())[0])
+
+    def paintEvent(self, event):
+        painter = QStylePainter(self)
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        option.currentText = ""
+        painter.drawComplexControl(QStyle.CC_ComboBox, option)
+        field = self.style().subControlRect(QStyle.CC_ComboBox, option, QStyle.SC_ComboBoxEditField, self)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(field, Qt.AlignCenter, self.currentText())
 
 @dataclass
 class QueueItem:
@@ -633,9 +889,10 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         self.output_edit.setText(str(self.settings.value("transcription/output_dir", str(default_output_dir()))))
-        self._restore_combo_setting(self.model_combo, "transcription/model", "medium")
+        saved_model = str(self.settings.value("transcription/model", "中文精确"))
+        self.model_combo.setCurrentText(saved_model if saved_model in MODEL_OPTIONS else "通用快速")
         self._restore_combo_setting(self.language_combo, "transcription/language", "中文")
-        self._restore_combo_setting(self.compute_mode_combo, "transcription/compute_mode", "GPU 优先")
+        self._restore_combo_setting(self.compute_mode_combo, "transcription/compute_mode", "GPU 快速")
         self.completion_sound_enabled = self._setting_bool(
             self.settings.value("preferences/completion_sound"), True
         )
@@ -651,6 +908,7 @@ class MainWindow(QMainWindow):
         self.save_beside_video = self._setting_bool(
             self.settings.value("preferences/save_beside_video"), False
         )
+        self.precision_subtitles = self._setting_bool(self.settings.value("preferences/precision_subtitles"), False)
         defaults = {
             "export_txt": True,
             "export_md": True,
@@ -694,6 +952,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("preferences/auto_open_output", self.auto_open_output_enabled)
         self.settings.setValue("preferences/create_video_subfolder", self.create_video_subfolder)
         self.settings.setValue("preferences/save_beside_video", self.save_beside_video)
+        self.settings.setValue("preferences/precision_subtitles", self.precision_subtitles)
         self.settings.sync()
 
     def closeEvent(self, event) -> None:
@@ -723,11 +982,12 @@ class MainWindow(QMainWindow):
         shell.setSpacing(18)
 
         sidebar = QFrame()
+        self.sidebar = sidebar
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(260)
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(20, 20, 20, 20)
-        sidebar_layout.setSpacing(16)
+        sidebar_layout.setContentsMargins(18, 22, 18, 18)
+        sidebar_layout.setSpacing(14)
 
         brand_mark = QLabel("南")
         brand_mark.setObjectName("BrandMark")
@@ -735,33 +995,94 @@ class MainWindow(QMainWindow):
         brand_title.setObjectName("BrandTitle")
         brand_subtitle = QLabel("音视频文稿工作台")
         brand_subtitle.setObjectName("BrandSubtitle")
-        sidebar_layout.addWidget(brand_mark)
-        sidebar_layout.addWidget(brand_title)
-        sidebar_layout.addWidget(brand_subtitle)
-        sidebar_layout.addSpacing(10)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(12)
+        brand_row.addWidget(brand_mark)
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(4)
+        brand_text.addWidget(brand_title)
+        brand_text.addWidget(brand_subtitle)
+        brand_row.addLayout(brand_text, 1)
+        sidebar_layout.addLayout(brand_row)
+
+        def separator():
+            line = QFrame()
+            line.setObjectName("SidebarSeparator")
+            line.setFixedHeight(1)
+            sidebar_layout.addSpacing(6)
+            sidebar_layout.addWidget(line)
+            sidebar_layout.addSpacing(4)
+
+        separator()
 
         module_title = QLabel("输出格式")
         module_title.setObjectName("SideSectionTitle")
-        module_text = QLabel("TXT\nMarkdown\nSRT\nDOCX")
-        module_text.setObjectName("PlatformBlue")
         sidebar_layout.addWidget(module_title)
-        sidebar_layout.addWidget(module_text)
-        sidebar_layout.addSpacing(8)
+        formats = QGridLayout()
+        formats.setSpacing(8)
+        for index, (name, icon) in enumerate((("TXT", "file"), ("Markdown", "file-type"), ("SRT", "file-text"), ("DOCX", "file-type"))):
+            tile = QFrame()
+            tile.setObjectName("SidebarFormat")
+            tile.setFixedHeight(44)
+            tile.setToolTip(f"支持导出 {name} 格式；在主界面选择导出格式。")
+            row = QHBoxLayout(tile)
+            row.setContentsMargins(10, 0, 8, 0)
+            row.setSpacing(6)
+            symbol = QLabel()
+            symbol.setPixmap(self._configuration_icon(icon, "#405362").pixmap(18, 18))
+            row.addWidget(symbol)
+            text = QLabel(name)
+            text.setObjectName("SidebarFormatLabel")
+            row.addWidget(text)
+            row.addStretch()
+            formats.addWidget(tile, index // 2, index % 2)
+        formats.setColumnStretch(0, 1)
+        formats.setColumnStretch(1, 1)
+        sidebar_layout.addLayout(formats)
+        separator()
 
         workflow_title = QLabel("操作流程")
         workflow_title.setObjectName("SideSectionTitle")
         sidebar_layout.addWidget(workflow_title)
-        for index, text in enumerate(["添加文件", "选择模型", "开始转写", "检查导出"], start=1):
-            step = QLabel(f"{index:02d}  {text}")
-            step.setObjectName("WorkflowStep")
-            sidebar_layout.addWidget(step)
+        steps = QVBoxLayout()
+        steps.setSpacing(0)
+        for index, (text, icon) in enumerate((("添加文件", "folder"), ("选择模型", "cpu"), ("开始转写", "play"), ("检查导出", "file-search")), start=1):
+            row = QHBoxLayout()
+            row.setSpacing(14)
+            number = QLabel(f"{index:02d}")
+            number.setObjectName("WorkflowNumber")
+            number.setFixedSize(30, 30)
+            number.setAlignment(Qt.AlignCenter)
+            row.addWidget(number)
+            symbol = QLabel()
+            symbol.setPixmap(self._configuration_icon(icon, "#405362").pixmap(20, 20))
+            row.addWidget(symbol)
+            label = QLabel(text)
+            label.setObjectName("WorkflowLabel")
+            row.addWidget(label, 1)
+            steps.addLayout(row)
+            if index < 4:
+                connector = QFrame()
+                connector.setObjectName("WorkflowConnector")
+                connector.setFixedSize(2, 22)
+                connection_row = QHBoxLayout()
+                connection_row.setContentsMargins(14, 4, 0, 4)
+                connection_row.addWidget(connector)
+                connection_row.addStretch()
+                steps.addLayout(connection_row)
+        sidebar_layout.addLayout(steps)
         sidebar_layout.addStretch(1)
+        separator()
 
         self.open_folder_button = QPushButton("打开输出目录")
         self.open_folder_button.setObjectName("SideButton")
+        self.open_folder_button.setIcon(self._configuration_icon("folder", "#ffffff"))
+        self.open_folder_button.setFixedHeight(40)
         self.open_folder_button.clicked.connect(self._open_output_dir)
         self.settings_button = QPushButton("设置")
         self.settings_button.setObjectName("SideSettingsButton")
+        self.settings_button.setIcon(self._configuration_icon("settings", "#405362"))
+        self.settings_button.setFixedHeight(40)
         self.settings_button.clicked.connect(self._open_settings)
         sidebar_layout.addWidget(self.settings_button)
         sidebar_layout.addWidget(self.open_folder_button)
@@ -773,19 +1094,11 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
         shell.addWidget(content, 1)
 
-        title = QLabel("转写工作台")
-        title.setObjectName("Title")
-        subtitle = QLabel("批量识别音视频内容，导出文稿、Markdown 和字幕。")
-        subtitle.setObjectName("Subtitle")
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-
         input_frame = QFrame()
-        input_frame.setObjectName("Panel")
-        input_layout = QGridLayout(input_frame)
-        input_layout.setContentsMargins(20, 18, 20, 18)
-        input_layout.setHorizontalSpacing(12)
-        input_layout.setVerticalSpacing(12)
+        input_frame.setObjectName("ConfigurationPanel")
+        input_layout = QHBoxLayout(input_frame)
+        input_layout.setContentsMargins(24, 24, 24, 24)
+        input_layout.setSpacing(24)
 
         output_label = QLabel("保存位置")
         output_label.setObjectName("FieldLabel")
@@ -794,85 +1107,139 @@ class MainWindow(QMainWindow):
         self.output_button.setObjectName("ChooseButton")
         self.output_button.clicked.connect(self._choose_output_dir)
 
-        model_label = QLabel("模型")
+        model_label = QLabel("转写模式")
         model_label.setObjectName("FieldLabel")
-        self.model_combo = CenterComboBox()
-        self.model_combo.addItems(MODEL_OPTIONS)
-        self.model_combo.setCurrentText("medium")
-        self.model_combo.setFixedWidth(150)
+        self.model_combo = TranscriptionModeCombo()
+        self.model_combo.setCurrentText("中文精确")
 
         language_label = QLabel("语言")
         language_label.setObjectName("FieldLabel")
         self.language_combo = CenterComboBox()
         self.language_combo.addItems(LANGUAGE_OPTIONS)
         self.language_combo.setCurrentText("中文")
-        self.language_combo.setFixedWidth(170)
+        self.language_combo.setMinimumWidth(110)
 
-        mode_label = QLabel("模式")
+        mode_label = QLabel("运行方式")
         mode_label.setObjectName("FieldLabel")
         self.compute_mode_combo = CenterComboBox()
         self.compute_mode_combo.addItems(COMPUTE_MODE_OPTIONS)
-        self.compute_mode_combo.setCurrentText("GPU 优先")
-        self.compute_mode_combo.setFixedWidth(160)
+        self.compute_mode_combo.setCurrentText("GPU 快速")
+        self.compute_mode_combo.setMinimumWidth(120)
 
-        format_label = QLabel("导出")
+        format_label = QLabel("导出格式")
         format_label.setObjectName("FieldLabel")
-        self.txt_check = QCheckBox("TXT")
+        self.txt_check = FormatChoice("TXT")
         self.txt_check.setChecked(True)
-        self.md_check = QCheckBox("Markdown")
+        self.md_check = FormatChoice("Markdown")
         self.md_check.setChecked(True)
-        self.srt_check = QCheckBox("SRT")
+        self.srt_check = FormatChoice("SRT")
         self.srt_check.setChecked(True)
-        self.docx_check = QCheckBox("DOCX")
+        self.docx_check = FormatChoice("DOCX")
         self.docx_check.setChecked(True)
-        self.polish_check = QCheckBox("翻译润色")
+        self.polish_check = PolishSwitch()
         self.polish_check.setChecked(bool(os.environ.get("NANZHU_TEXT_API_KEY") or os.environ.get("OPENAI_API_KEY")))
         self.polish_check.setToolTip("开启后会调用文本 API，把转写稿翻译/整理为现代简体中文。需要配置 NANZHU_TEXT_API_KEY 或 OPENAI_API_KEY。")
-        format_row = QHBoxLayout()
-        format_row.addWidget(self.txt_check)
-        format_row.addWidget(self.md_check)
-        format_row.addWidget(self.srt_check)
-        format_row.addWidget(self.docx_check)
-        format_row.addWidget(self.polish_check)
-        format_row.addStretch(1)
-        option_row = QHBoxLayout()
-        option_row.setContentsMargins(0, 0, 0, 0)
-        option_row.setSpacing(10)
-        option_row.addWidget(model_label)
-        option_row.addWidget(self.model_combo)
-        option_row.addWidget(language_label)
-        option_row.addWidget(self.language_combo)
-        option_row.addWidget(mode_label)
-        option_row.addWidget(self.compute_mode_combo)
-        option_row.addWidget(format_label)
-        option_row.addLayout(format_row)
-        option_row.addStretch(1)
+        format_row = QGridLayout()
+        format_row.setContentsMargins(0, 0, 0, 0)
+        format_row.setSpacing(12)
+        for position, choice in enumerate((self.txt_check, self.md_check, self.srt_check, self.docx_check)):
+            choice.setObjectName("FormatChoice")
+            choice.setMinimumHeight(44)
+            format_row.addWidget(choice, position // 2, position % 2)
 
         self.add_files_button = QPushButton("添加文件")
         self.add_files_button.setObjectName("AddFileButton")
-        self.add_files_button.setFixedWidth(220)
+        self.add_files_button.setIcon(self._configuration_icon("folder", "#a96800"))
+        self.add_files_button.setIconSize(QSize(18, 18))
         self.add_files_button.clicked.connect(self._choose_files)
         self.add_folder_button = QPushButton("添加文件夹")
         self.add_folder_button.setObjectName("AddFolderButton")
-        self.add_folder_button.setFixedWidth(220)
+        self.add_folder_button.setIcon(self._configuration_icon("folder-plus", "#6941c6"))
+        self.add_folder_button.setIconSize(QSize(18, 18))
         self.add_folder_button.clicked.connect(self._choose_folder)
         add_button_row = QHBoxLayout()
         add_button_row.setContentsMargins(0, 0, 0, 0)
-        add_button_row.setSpacing(12)
+        add_button_row.setSpacing(10)
         add_button_row.addWidget(self.add_files_button)
         add_button_row.addWidget(self.add_folder_button)
-        add_button_row.addStretch(1)
-        self.hint_label = QLabel("也可以把视频或音频文件直接拖到窗口里。首次使用需要安装 faster-whisper 依赖。")
-        self.hint_label.setObjectName("Hint")
+        def group(title, number):
+            widget = QWidget()
+            box = QVBoxLayout(widget)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(20)
+            heading = QHBoxLayout()
+            heading.setSpacing(10)
+            mark = QLabel(number)
+            mark.setObjectName("ConfigurationStep")
+            mark.setAlignment(Qt.AlignCenter)
+            mark.setFixedSize(42, 42)
+            label = QLabel(title)
+            label.setObjectName("ConfigurationHeading")
+            heading.addWidget(mark)
+            heading.addWidget(label)
+            heading.addStretch()
+            box.addLayout(heading)
+            return widget, box
 
-        input_layout.addWidget(output_label, 0, 0)
-        input_layout.addWidget(self.output_edit, 0, 1, 1, 4)
-        input_layout.addWidget(self.output_button, 0, 5)
-        input_layout.addLayout(option_row, 1, 1, 1, 5)
-        input_layout.addLayout(add_button_row, 2, 1, 1, 5)
-        input_layout.addWidget(self.hint_label, 3, 1, 1, 5)
-        input_layout.setColumnStretch(1, 1)
-        input_layout.setColumnStretch(3, 1)
+        def separator():
+            line = QFrame()
+            line.setObjectName("ConfigurationDivider")
+            line.setFixedWidth(1)
+            return line
+
+        files_group, files_box = group("导入", "01")
+        files_box.addSpacing(4)
+        files_box.addLayout(add_button_row)
+        path_box = QVBoxLayout()
+        path_box.setSpacing(7)
+        path_box.addWidget(output_label)
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+        self.output_edit.setFixedHeight(40)
+        self.output_button.setFixedHeight(40)
+        self.output_button.setMinimumWidth(68)
+        path_row.addWidget(self.output_edit, 1)
+        path_row.addWidget(self.output_button)
+        path_box.addLayout(path_row)
+        files_box.addLayout(path_box)
+        files_box.addStretch(1)
+
+        transcription_group, transcription_box = group("转写", "02")
+        fields = QGridLayout()
+        fields.setHorizontalSpacing(16)
+        fields.setVerticalSpacing(12)
+        self.model_combo.setFixedHeight(40)
+        self.model_combo.setMinimumWidth(0)
+        self.model_combo.setMaximumWidth(16777215)
+        for index, (label, control) in enumerate(((model_label, self.model_combo), (language_label, self.language_combo), (mode_label, self.compute_mode_combo))):
+            control.setFixedHeight(40)
+            fields.addWidget(label, index, 0)
+            fields.addWidget(control, index, 1)
+        fields.setColumnStretch(1, 1)
+        transcription_box.addLayout(fields)
+        transcription_box.addStretch(1)
+
+        export_group, export_box = group("导出", "03")
+        formats_box = QVBoxLayout()
+        formats_box.setSpacing(15)
+        formats_box.addWidget(format_label)
+        formats_box.addLayout(format_row)
+        polish_box = QHBoxLayout()
+        polish_box.setSpacing(10)
+        polish_label = QLabel("翻译润色")
+        polish_label.setObjectName("FieldLabel")
+        polish_box.addWidget(polish_label)
+        polish_box.addWidget(self.polish_check)
+        polish_box.addStretch(1)
+        export_box.addLayout(formats_box)
+        export_box.addLayout(polish_box)
+        export_box.addStretch(1)
+
+        input_layout.addWidget(files_group, 5)
+        input_layout.addWidget(separator())
+        input_layout.addWidget(transcription_group, 5)
+        input_layout.addWidget(separator())
+        input_layout.addWidget(export_group, 5)
         layout.addWidget(input_frame)
 
         action_frame = QFrame()
@@ -906,7 +1273,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(action_frame)
 
         self.table = QTableWidget(0, 12)
-        self.table.setHorizontalHeaderLabels(["序号", "选择", "状态", "文件名", "时长", "语言", "模型", "进度", "耗时", "剩余", "输出路径", "定位"])
+        self.table.setHorizontalHeaderLabels(["序号", "选择", "状态", "文件名", "时长", "语言", "转写模式", "进度", "耗时", "剩余", "输出路径", "定位"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
@@ -969,12 +1336,18 @@ class MainWindow(QMainWindow):
             QLabel#CopyToast { background: transparent; color: transparent; border-radius: 8px; padding: 6px 12px; font-weight: 800; }
             QLabel#CopyToast[active="true"] { background: #16a34a; color: #ffffff; }
             QLabel#FieldLabel { color: #29434b; font-weight: 700; }
-            QFrame#Sidebar { background: #ffffff; border: 1px solid #d7e7ea; border-radius: 8px; }
+            QFrame#Sidebar { background: #ffffff; border: 1px solid #dce5eb; border-radius: 16px; }
+            QFrame#SidebarSeparator { background: #e0e7ec; border: none; }
+            QFrame#SidebarFormat { background: #f4f7f9; border: none; border-radius: 9px; }
+            QLabel#SidebarFormatLabel { font-size: 12px; color: #293c49; }
+            QLabel#WorkflowNumber { background: #edf2f5; color: #293c49; border-radius: 15px; font-size: 13px; font-weight: 600; }
+            QLabel#WorkflowLabel { color: #293c49; font-size: 14px; }
+            QFrame#WorkflowConnector { background: #dae3eb; border: none; }
             QFrame#Panel, QFrame#ActionPanel { background: #ffffff; border: 1px solid #d7e7ea; border-radius: 8px; }
-            QLabel#BrandMark { background: #d9fbf3; color: #087f76; border: 1px solid #7de3d0; border-radius: 8px; min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px; qproperty-alignment: AlignCenter; font-size: 18px; font-weight: 800; }
-            QLabel#BrandTitle { color: #102027; font-size: 16px; font-weight: 800; }
-            QLabel#BrandSubtitle { color: #6b7e86; font-size: 12px; font-weight: 700; }
-            QLabel#SideSectionTitle { color: #8797a0; font-size: 12px; font-weight: 700; }
+            QLabel#BrandMark { background: #d9f6ef; color: #087f76; border: 1px solid #96ded1; border-radius: 12px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; qproperty-alignment: AlignCenter; font-size: 25px; font-weight: 700; }
+            QLabel#BrandTitle { color: #102027; font-size: 20px; font-weight: 700; }
+            QLabel#BrandSubtitle { color: #6b7e86; font-size: 12px; }
+            QLabel#SideSectionTitle { color: #6b7e86; font-size: 14px; font-weight: 600; }
             QLabel#PlatformBlue { background: #e8faf7; color: #0f766e; border: 1px solid #b8ead7; border-radius: 8px; padding: 12px; font-weight: 800; }
             QLabel#WorkflowStep { background: #f7fbfc; color: #38545c; border: 1px solid #d7e7ea; border-radius: 8px; padding: 9px 11px; font-weight: 700; }
             QLineEdit, QComboBox { background: #fbfefd; border: 1px solid #cfe3e6; border-radius: 6px; padding: 9px; color: #102027; selection-background-color: #14b8a6; }
@@ -1026,11 +1399,28 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background: #e8faf7; border: 1px solid #9edbd3; }
             QPushButton:disabled { color: #9aa9ad; background: #f1f5f6; border: 1px solid #dde8ea; }
             QPushButton#PrimaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f766e, stop:1 #2563eb); border: 1px solid #0f766e; color: #ffffff; font-weight: 800; }
-            QPushButton#SideButton { background: #16a394; border: 1px solid #26c6b5; color: #ffffff; font-weight: 800; }
-            QPushButton#SideSettingsButton { background: #f3f7f9; border: 1px solid #d5e3e7; color: #42545b; font-weight: 800; }
+            QPushButton#SideButton { background: #0b9e90; border: 1px solid #0b9e90; border-radius: 20px; padding: 0 12px; color: #ffffff; font-size: 14px; font-weight: 600; }
+            QPushButton#SideButton:hover { background: #09887c; border-color: #09887c; }
+            QPushButton#SideSettingsButton { background: #f4f7f9; border: none; border-radius: 20px; padding: 0 12px; color: #405362; font-size: 14px; font-weight: 600; }
+            QPushButton#SideSettingsButton:hover { background: #eaf3f0; }
+            QPushButton#SideSettingsButton:focus { background: #e5f2ed; border: none; }
+            QPushButton#SideButton:focus { background: #07877b; border-color: #07877b; }
             QPushButton#ChooseButton { background: #eefdf8; border: 1px solid #aee9d7; color: #087f76; font-weight: 800; }
-            QPushButton#AddFileButton, QPushButton#AddFolderButton { min-width: 220px; max-width: 220px; background: #fff8e8; border: 1px solid #f6d48b; color: #a45b00; font-weight: 800; }
+            QFrame#ConfigurationPanel { background: #ffffff; border: 1px solid #dce5e9; border-radius: 12px; }
+            QLabel#ConfigurationHeading { font-size: 20px; font-weight: 700; color: #102027; }
+            QLabel#ConfigurationStep { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #c5f2ed, stop:1 #8ed7cf); border: 1px solid #87cfc7; border-radius: 21px; font-size: 19px; font-weight: 700; color: #123e48; }
+            QFrame#ConfigurationDivider { background: #e1e7eb; border: none; }
+            QFrame#ConfigurationPanel QLineEdit, QFrame#ConfigurationPanel QComboBox { background: #ffffff; border-color: #d5dfe5; }
+            QFrame#ConfigurationPanel QComboBox::drop-down { background: transparent; border-left: none; }
+            QPushButton#AddFileButton, QPushButton#AddFolderButton { min-width: 100px; background: #fff8e8; border: 1px solid #f6d48b; color: #a45b00; font-weight: 700; }
+            QPushButton#AddFileButton:hover { background: #fff0cd; border-color: #e5b64f; }
             QPushButton#AddFolderButton { background: #f3efff; border: 1px solid #ddd2ff; color: #6941c6; }
+            QPushButton#AddFolderButton:hover { background: #e9e1ff; }
+            QCheckBox#FormatChoice { border: 1px solid #d8e3e8; border-radius: 8px; background: #fbfdfe; padding: 0 10px; spacing: 8px; font-weight: 600; }
+            QCheckBox#FormatChoice:checked { background: #effbf8; border-color: #a3ded4; }
+            QCheckBox#FormatChoice:hover { border-color: #72c8ba; }
+            QFrame#ConfigurationPanel QCheckBox::indicator { width: 18px; height: 18px; border: 1px solid #a8b2b9; border-radius: 4px; background: #ffffff; }
+            QFrame#ConfigurationPanel QCheckBox::indicator:checked { background: #07975b; border-color: #07975b; image: url(__CHECK_ICON__); }
             QPushButton#StopButton { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; font-weight: 800; }
             QPushButton#ClearButton { background: #f3f7f9; border: 1px solid #d5e3e7; color: #42545b; font-weight: 800; }
             QPushButton#SelectButton { background: #e9fbf4; border: 1px solid #b8ead7; color: #047857; font-weight: 800; }
@@ -1044,11 +1434,24 @@ class MainWindow(QMainWindow):
             QCheckBox { color: #29434b; font-weight: 700; }
             """
         )
-        self.setStyleSheet(stylesheet.replace("__CHEVRON_ICON__", chevron_url))
+        self.setStyleSheet(stylesheet.replace("__CHEVRON_ICON__", chevron_url).replace("__CHECK_ICON__", self._asset_path("ui-icons/check.svg").as_posix()))
 
     def _lock_add_button_widths(self) -> None:
         for button in (self.add_files_button, self.add_folder_button):
-            button.setFixedWidth(220)
+            button.setFixedHeight(40)
+
+    def _configuration_icon(self, name: str, color: str) -> QIcon:
+        path = self._asset_path(f"ui-icons/{name}.svg")
+        if not path.exists():
+            return QIcon()
+        svg = path.read_bytes().replace(b"currentColor", color.encode("ascii"))
+        renderer = QSvgRenderer(svg)
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
 
     def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasUrls():
@@ -1123,6 +1526,7 @@ class MainWindow(QMainWindow):
             auto_open_output=self.auto_open_output_enabled,
             create_video_subfolder=self.create_video_subfolder,
             save_beside_video=self.save_beside_video,
+            precision_subtitles=self.precision_subtitles,
         )
         if dialog.exec() != QDialog.Accepted:
             return
@@ -1132,6 +1536,7 @@ class MainWindow(QMainWindow):
         self.auto_open_output_enabled = values["auto_open_output"]
         self.create_video_subfolder = values["create_video_subfolder"]
         self.save_beside_video = values["save_beside_video"]
+        self.precision_subtitles = values["precision_subtitles"]
         self._save_settings()
         self._set_copy_tip("设置已保存", active=True)
         QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
@@ -1327,6 +1732,7 @@ class MainWindow(QMainWindow):
             self.ffmpeg_dir,
             create_video_subfolder=self.create_video_subfolder,
             save_beside_video=self.save_beside_video,
+            precision_subtitles=self.precision_subtitles,
         )
 
     def _set_select_cell(self, row: int, checked: bool) -> None:
@@ -1350,6 +1756,9 @@ class MainWindow(QMainWindow):
         combo.addItems(items)
         combo.setCurrentText(current if current in items else items[0])
         combo.setObjectName("TableCombo")
+        if column == COL_MODEL:
+            combo.setToolTip("\n".join(mode_description(combo.currentText())))
+            combo.currentTextChanged.connect(lambda text: combo.setToolTip("\n".join(mode_description(text))))
         combo.setFixedWidth(max(86, self.table.columnWidth(column) - 8))
         self.table.setCellWidget(row, column, combo)
 
@@ -1358,7 +1767,7 @@ class MainWindow(QMainWindow):
             return QColor("#dcfce7"), QColor("#15803d")
         if status == "已存在":
             return QColor("#e0f2fe"), QColor("#0369a1")
-        if status in {"转写中", "提取音频", "下载模型", "加载模型", "润色中"}:
+        if status in {"转写中", "提取音频", "下载模型", "加载模型", "润色中", "字幕对齐"}:
             return QColor("#dbeafe"), QColor("#1d4ed8")
         if status == "等待":
             return QColor("#fef3c7"), QColor("#b45309")
@@ -1444,6 +1853,7 @@ class MainWindow(QMainWindow):
             self.ffmpeg_dir,
             create_video_subfolder=self.create_video_subfolder,
             save_beside_video=self.save_beside_video,
+            precision_subtitles=self.precision_subtitles,
         )
 
     def _expected_output_paths(self, item: QueueItem, options: TranscribeOptions) -> list[Path]:
@@ -1573,7 +1983,9 @@ class MainWindow(QMainWindow):
         return False
 
     def _warn_gpu_runtime_if_needed(self) -> bool:
-        if self.compute_mode_combo.currentText() != "GPU 优先" or self.gpu_runtime_warning_ack:
+        if all(model_for_mode(item.model_size) == "qwen3-asr" for item in self._selected_items()):
+            return True  # The isolated PyTorch runtime performs its own CUDA check.
+        if self.compute_mode_combo.currentText() != "GPU 快速" or self.gpu_runtime_warning_ack:
             return True
         has_cublas = self._dll_exists_in_path({"cublas64_12.dll"})
         has_cudnn = self._dll_exists_in_path({"cudnn64_9.dll"})
@@ -1637,6 +2049,15 @@ class MainWindow(QMainWindow):
             self._debug_log("start aborted: no selected runnable items")
             QMessageBox.information(self, "没有待转写项目", "请先勾选等待或失败的项目。")
             return
+        needs_qwen = any(model_for_mode(item.model_size) == "qwen3-asr" for item in items) or (options.export_srt and options.precision_subtitles)
+        if needs_qwen and getattr(sys, "frozen", False):
+            from .qwen_bridge import runtime_ready
+            if not runtime_ready():
+                answer = QMessageBox.question(self, "安装本地转写环境", "首次使用中文精确或精确字幕，需要下载独立运行环境。GPU 依赖占用数 GB，安装后长期复用，音频不会上传。\n\n现在打开安装窗口吗？完成后请重新点击开始转写。", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if answer == QMessageBox.Yes:
+                    installer = Path(sys.executable).parent / "安装中文精确运行环境_Windows.bat"
+                    subprocess.Popen(["cmd.exe", "/c", str(installer)], cwd=str(installer.parent), creationflags=subprocess.CREATE_NEW_CONSOLE)
+                return
         if self.polish_check.isChecked() and not (
             os.environ.get("NANZHU_TEXT_API_KEY") or os.environ.get("OPENAI_API_KEY")
         ):
@@ -1660,7 +2081,7 @@ class MainWindow(QMainWindow):
             self._debug_log("start aborted: gpu warning rejected")
             return
         self._debug_log("gpu runtime scan: completed")
-        if self.compute_mode_combo.currentText() == "GPU 优先":
+        if self.compute_mode_combo.currentText() == "GPU 快速" and any(model_for_mode(item.model_size) == "turbo" for item in items):
             has_cublas = self._dll_exists_in_path({"cublas64_12.dll"})
             has_cudnn = self._dll_exists_in_path({"cudnn64_9.dll"})
             if not has_cublas or not has_cudnn:
@@ -1787,6 +2208,9 @@ class MainWindow(QMainWindow):
             self.status_label.setText(eta_text or "正在加载模型，首次使用可能需要下载或解压模型。")
         elif status == "transcribing":
             self._set_status_cell(row, "转写中")
+        elif status == "aligning":
+            self._set_status_cell(row, "字幕对齐")
+            self._set_cell(row, COL_ETA, "字幕时间对齐中")
         elif status == "polishing":
             self._set_status_cell(row, "润色中")
         if info.get("force_cpu"):
@@ -1946,7 +2370,36 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    if "--qa-transcribe" in sys.argv:
+        import json
+        index = sys.argv.index("--qa-transcribe")
+        source, mode, target = sys.argv[index + 1:index + 4]
+        destination = Path(target).resolve()
+        destination.mkdir(parents=True, exist_ok=True)
+        options = TranscribeOptions(destination, mode, "中文", "GPU 快速", True, False, True, False, False, find_ffmpeg_dir(Path(__file__).resolve().parents[1]))
+        notices = []
+        result = transcribe_file(Path(source).resolve(), options, lambda value: notices.append(value.get("notice")) if value.get("notice") else None)
+        receipt = {"success": bool(result.text and result.files), "mode": mode, "characters": len(result.text), "exports": [file.name for file in result.files], "notices": notices}
+        (destination / "receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+        return 0 if receipt["success"] else 1
     app = QApplication(sys.argv)
+    if "--qa-screenshots" in sys.argv:
+        target = Path(sys.argv[sys.argv.index("--qa-screenshots") + 1]).resolve()
+        target.mkdir(parents=True, exist_ok=True)
+        window = MainWindow(QSettings(str(target / "isolated-settings.ini"), QSettings.IniFormat))
+        window.resize(1600, 1000)
+        window.show()
+        def capture():
+            window.grab().save(str(target / "workbench.png"))
+            dialog = AppSettingsDialog(window, completion_sound=True, completion_dialog=False, auto_open_output=True)
+            dialog.show()
+            app.processEvents()
+            dialog.grab().save(str(target / "settings.png"))
+            dialog.close()
+            window.close()
+            app.quit()
+        QTimer.singleShot(600, capture)
+        return app.exec()
     window = MainWindow()
     window.show()
     return app.exec()

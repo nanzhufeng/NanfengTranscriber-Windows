@@ -4,19 +4,26 @@
 
 ## 软件界面预览
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.3.png)
+Windows v1.0.5 当前构建运行截图，主窗口 1600×1000。
 
-## v1.0.4 更新
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.5.png)
 
-- 设置新增“关于南枫转写”入口，展示当前版本、开发时间、开发者和 GitHub 更新地址。
+![南枫转写 Windows 设置](docs/settings-v1.0.5.png)
+
+## v1.0.5 更新
+
+- 两套本地转写模式和固定字幕对齐器；首次使用中文精确时按需安装独立运行环境，无需手动安装 Python。
+- 主界面、侧栏和设置重新排版；下拉框支持再次点击关闭，选中项与开关焦点更清晰。
+- 运行方式统一显示为“GPU 快速 / CPU 稳定”。
 - 继续支持直接输出、可选视频同名子文件夹，以及保存到视频所在目录。
 - SRT 使用逐词时间戳分成短字幕，按停顿与句末切分，避免长段铺屏及时间重叠。
 
 ## 功能
 
 - 批量添加视频、音频或整个文件夹，也支持拖放导入。
-- 使用 faster-whisper 的 `base`、`small`、`medium`、`large-v3` 模型，默认 `medium`。
-- 支持 GPU 优先和 CPU 稳定模式；GPU 环境不可用时可回退 CPU。
+- 两种本地转写模式：中文精确（Qwen3-ASR-1.7B）与通用快速（Whisper large-v3-turbo），默认中文精确。收起的输入框只显示中文名；展开下拉列表后，各选项在中文名下面显示实际模型名，悬停查看功能差异。
+- 字幕使用固定 Qwen3-ForcedAligner-0.6B 对齐器：中文精确导出 SRT 时使用；通用快速可在设置开启“快速模式也使用精确字幕对齐”。总共两套识别权重和一套对齐权重。
+- 支持 GPU 快速和 CPU 稳定模式；GPU 环境不可用时可回退 CPU。
 - 同一批任务复用模型，GPU 模式支持批量推理和资源不足时逐级降级。
 - 每个 Whisper 模型只需成功下载一次，默认长期保存在 `%LOCALAPPDATA%\NanfengTranscriber\models`，升级或重装软件仍会复用。
 - 导出 TXT、Markdown、SRT、DOCX。
@@ -30,11 +37,19 @@
 
 ## Windows 安装
 
-从 GitHub Releases 直接下载标注为 Windows 的 `NanfengTranscriber_Windows_*_Setup_*.exe`，双击安装。Release 仅提供安装程序本体；安装说明以本 README 的中文内容为准。
+从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.5-Setup.exe`，双击安装。Release 提供安装程序本体及 SHA-256 校验；安装说明以本 README 为准。
 
-首次使用某个 Whisper 模型时需要联网下载模型文件；以后会强制从本地缓存加载，缓存损坏时才联网修复。安装包尚未进行商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
+主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
+
+Windows 安装包未签名，系统可能显示未知发布者提示。
 
 ## 源码运行
+
+中文精确使用独立的本地 Python 运行环境。首次运行 `安装中文精确运行环境_Windows.bat` 安装依赖，再运行 `测试最新设置_Windows.bat`。环境位于项目 `.runtime/qwen`，也可通过 `NANFENG_QWEN_PYTHON` 指定已有环境的 Python。模型首次下载后保存在用户级缓存，后续离线复用；语音推理和字幕对齐不上传音频。
+
+旧版本 Whisper 选择自动迁移为通用快速；旧缓存不再作为可选模型加载。日语精确字幕额外需要 `nagisa` 分词依赖，未安装时请使用快速模式的原生时间戳；精确字幕失败会提示原因，不伪造对齐时间。
+
+GitHub v1.0.4 为历史发布版本；v1.0.5 发布状态见 [PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 
 环境要求：Python 3.11+、FFmpeg/FFprobe，以及 NVIDIA GPU 可选运行库。
 

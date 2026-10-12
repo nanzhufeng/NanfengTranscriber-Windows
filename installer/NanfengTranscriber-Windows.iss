@@ -16,9 +16,12 @@
 
 #define MyAppName "南枫转写"
 #define MyAppExeName "南枫转写.exe"
+#ifndef MyAppId
+  #define MyAppId "{{CF9C02C9-9A4F-4BC4-9D50-A34CA1E6D92E}"
+#endif
 
 [Setup]
-AppId={{CF9C02C9-9A4F-4BC4-9D50-A34CA1E6D92E}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=南烛枫
@@ -32,7 +35,7 @@ OutputDir={#MyOutputDir}
 OutputBaseFilename={#MyOutputBaseFilename}
 SetupIconFile={#MySetupIconFile}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-Compression=lzma2/ultra64
+Compression=lzma2/normal
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
@@ -53,6 +56,10 @@ Source: "{#MyAppSourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesub
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+
+[InstallDelete]
+Type: files; Name: "{app}\_internal\icuuc.dll"
+Type: files; Name: "{app}\_internal\icudt78.dll"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent

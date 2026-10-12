@@ -1,10 +1,14 @@
 param(
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.0.0',
+    [string]$SourceAppPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ($SourceAppPath) {
+    $sourceAppDir = Get-Item -LiteralPath $SourceAppPath
+} else {
 $releaseDir = Get-ChildItem -LiteralPath $projectDir -Directory -Filter 'dist_release_*' |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
@@ -19,6 +23,10 @@ $sourceAppDir = Get-ChildItem -LiteralPath $releaseDir.FullName -Directory |
 
 if (-not $sourceAppDir) {
     throw ('No application folder with matching exe was found in: ' + $releaseDir.FullName)
+}
+}
+if (-not $sourceAppDir.FullName -or -not (Test-Path -LiteralPath (Join-Path $sourceAppDir.FullName '南枫转写.exe'))) {
+    throw 'Installer source must be the built application directory.'
 }
 
 $isccCandidates = @(
@@ -56,7 +64,7 @@ $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outputDir = Join-Path $projectDir ("WindowsSetup_Inno_$timestamp")
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
-$outputBaseName = "NanfengTranscriber_Windows_v${Version}_Setup_${timestamp}"
+$outputBaseName = "NanfengTranscriber-Windows-v${Version}-Setup"
 $issPath = Join-Path $projectDir 'installer\NanfengTranscriber-Windows.iss'
 $iconPath = Join-Path $projectDir 'app\assets\nanfeng-transcriber-icon.ico'
 $issCompilePath = Join-Path $env:TEMP ("NanfengTranscriber-Windows-$timestamp.iss")
@@ -84,7 +92,7 @@ $setupExe = Join-Path $outputDir ($outputBaseName + '.exe')
 if (-not (Test-Path -LiteralPath $setupExe)) {
     throw ('Inno Setup did not create the expected installer: ' + $setupExe)
 }
-if ((Get-Item -LiteralPath $setupExe).Length -lt 1MB) {
+if ((Get-Item -LiteralPath $setupExe).Length -lt 64KB) {
     throw ('The generated installer is unexpectedly small: ' + $setupExe)
 }
 

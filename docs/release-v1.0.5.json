@@ -1,0 +1,12 @@
+{
+  "version": "1.0.5",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.5-Setup.exe",
+  "bytes": 160881756,
+  "sha256": "5e36e3e7fb24c49c2de79e4b1240ce9a75be79089d7a4c361ced971a4f2035c0",
+  "authenticode": "NotSigned",
+  "automatedTests": 50,
+  "isolatedInstallerLifecycle": "PASS",
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use"
+}

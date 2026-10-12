@@ -22,7 +22,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             first_settings = QSettings(str(settings_path), QSettings.IniFormat)
             first = main.MainWindow(settings=first_settings)
             first.output_edit.setText(str(Path(temp_dir) / "outputs"))
-            first.model_combo.setCurrentText("large-v3")
+            first.model_combo.setCurrentText("通用快速")
             first.language_combo.setCurrentText("英文")
             first.compute_mode_combo.setCurrentText("CPU 稳定")
             first.txt_check.setChecked(False)
@@ -33,6 +33,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             first.completion_sound_enabled = False
             first.completion_dialog_enabled = False
             first.auto_open_output_enabled = True
+            first.precision_subtitles = True
             self.assertFalse(first.create_video_subfolder)
             self.assertFalse(first.save_beside_video)
             first.save_beside_video = True
@@ -43,7 +44,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             second_settings = QSettings(str(settings_path), QSettings.IniFormat)
             second = main.MainWindow(settings=second_settings)
             self.assertEqual(second.output_edit.text(), str(Path(temp_dir) / "outputs"))
-            self.assertEqual(second.model_combo.currentText(), "large-v3")
+            self.assertEqual(second.model_combo.currentText(), "通用快速")
             self.assertEqual(second.language_combo.currentText(), "英文")
             self.assertEqual(second.compute_mode_combo.currentText(), "CPU 稳定")
             self.assertFalse(second.txt_check.isChecked())
@@ -54,6 +55,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertFalse(second.completion_sound_enabled)
             self.assertFalse(second.completion_dialog_enabled)
             self.assertTrue(second.auto_open_output_enabled)
+            self.assertTrue(second.precision_subtitles)
             self.assertTrue(second.save_beside_video)
             self.assertTrue(second.create_video_subfolder)
             second.close()
@@ -73,10 +75,109 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             dialog.auto_open_output_check.setChecked(True)
             self.assertEqual(
                 dialog.values(),
-                {"completion_sound": False, "completion_dialog": False, "auto_open_output": True, "create_video_subfolder": False, "save_beside_video": False},
+                {"completion_sound": False, "completion_dialog": False, "auto_open_output": True, "create_video_subfolder": False, "save_beside_video": False, "precision_subtitles": False},
             )
             dialog.close()
             window.close()
+
+    def test_mode_input_has_two_line_model_metadata_and_no_page_explanation(self):
+        with TemporaryDirectory() as temp_dir:
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            settings.setValue("transcription/model", "medium")
+            window = main.MainWindow(settings)
+            self.assertEqual(window.model_combo.count(), 2)
+            self.assertEqual(window.model_combo.currentText(), "通用快速")
+            self.assertEqual(window.model_combo.currentData(), "Whisper large-v3-turbo")
+            window.model_combo.setCurrentText("中文精确")
+            self.assertEqual(window.model_combo.currentData(), "Qwen3-ASR-1.7B")
+            self.assertTrue(all(not label.text().startswith(("真实模型：", "中文精确：", "也可以把视频")) for label in window.findChildren(main.QLabel)))
+            window.close()
+
+    def test_settings_destination_is_exclusive_and_review_can_toggle(self):
+        from PySide6.QtTest import QTest
+        from PySide6.QtCore import Qt
+        with TemporaryDirectory() as temp_dir:
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            window = main.MainWindow(settings)
+            dialog = main.AppSettingsDialog(window, completion_sound=True, completion_dialog=False, auto_open_output=True)
+            dialog.show()
+            self.app.processEvents()
+            self.assertTrue(dialog.software_path_radio.isChecked())
+            QTest.mouseClick(dialog.save_beside_video_check, Qt.LeftButton)
+            self.assertTrue(dialog.values()["save_beside_video"])
+            self.assertFalse(dialog.software_path_radio.isChecked())
+            QTest.mouseClick(dialog.software_path_radio, Qt.LeftButton)
+            self.assertFalse(dialog.values()["save_beside_video"])
+            self.assertTrue(dialog.review_details.isHidden())
+            QTest.mouseClick(dialog.review_button, Qt.LeftButton)
+            self.assertFalse(dialog.review_details.isHidden())
+            QTest.mouseClick(dialog.review_button, Qt.LeftButton)
+            self.assertTrue(dialog.review_details.isHidden())
+            QTest.mouseClick(dialog.completion_sound_check, Qt.LeftButton)
+            self.assertFalse(dialog.values()["completion_sound"])
+            dialog.reject()
+            self.assertTrue(window.completion_sound_enabled)
+            window.close()
+
+    def test_mode_language_and_runtime_popups_toggle_repeatedly(self):
+        from PySide6.QtCore import Qt, QPoint
+        from PySide6.QtTest import QTest
+
+        with TemporaryDirectory() as temp_dir:
+            window = main.MainWindow(QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
+            window.show()
+            self.app.processEvents()
+            for combo in (window.model_combo, window.language_combo, window.compute_mode_combo):
+                trigger = combo.lineEdit() if combo.isEditable() else combo
+                for _ in range(3):
+                    QTest.mouseClick(trigger, Qt.LeftButton)
+                    self.app.processEvents()
+                    self.assertTrue(combo.view().isVisible(), f"{combo.currentText()} cycle {_}")
+                    # Native Qt popup owns mouse capture; the second click is
+                    # delivered to that window at the original trigger position.
+                    popup = combo.view().window()
+                    position = popup.mapFromGlobal(trigger.mapToGlobal(trigger.rect().center()))
+                    QTest.mouseClick(popup, Qt.LeftButton, pos=position)
+                    self.app.processEvents()
+                    self.assertFalse(combo.view().isVisible())
+                QTest.mouseClick(trigger, Qt.LeftButton)
+                QTest.keyClick(combo.view(), Qt.Key_Escape)
+                self.app.processEvents()
+                self.assertFalse(combo.view().isVisible())
+                QTest.mouseClick(trigger, Qt.LeftButton)
+                self.assertTrue(combo.view().isVisible())
+                QTest.keyClick(combo.view(), Qt.Key_Down)
+                QTest.keyClick(combo.view(), Qt.Key_Return)
+                self.app.processEvents()
+                self.assertFalse(combo.view().isVisible())
+                QTest.mouseClick(combo, Qt.LeftButton, pos=QPoint(combo.width() - 10, combo.height() // 2))
+                self.assertTrue(combo.view().isVisible())
+                combo.hidePopup()
+            window.close()
+
+    def test_selected_mode_keeps_both_text_lines_readable(self):
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QImage, QPainter, QPalette
+        from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+
+        combo = main.TranscriptionModeCombo()
+        image = QImage(220, 52, QImage.Format_RGB32)
+        image.fill(main.QColor("white"))
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 220, 52)
+        option.state = QStyle.State_Enabled | QStyle.State_Selected
+        option.palette.setColor(QPalette.Highlight, main.QColor("#f4f4f4"))
+        option.palette.setColor(QPalette.HighlightedText, main.QColor("#ffffff"))
+        painter = QPainter(image)
+        combo.itemDelegate().paint(painter, option, combo.model().index(0, 0))
+        painter.end()
+        for top, bottom in ((8, 25), (28, 44)):
+            dark_pixels = sum(
+                image.pixelColor(x, y).lightness() < 140
+                for y in range(top, bottom) for x in range(45, 175)
+            )
+            self.assertGreater(dark_pixels, 25, "Selected title and model must remain legible on a light surface")
+        combo.close()
 
     def test_about_dialog_shows_current_product_and_release_information(self) -> None:
         with TemporaryDirectory() as temp_dir:

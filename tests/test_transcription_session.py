@@ -63,7 +63,7 @@ class TranscriptionSessionCacheTests(unittest.TestCase):
         FakePipeline.failures = {}
         self.options = transcriber.TranscribeOptions(
             output_dir=Path("test-output"),
-            model_size="medium",
+            model_size="turbo",
             language="中文",
             compute_mode="GPU 优先",
             export_txt=True,
@@ -98,12 +98,12 @@ class TranscriptionSessionCacheTests(unittest.TestCase):
 
             self.assertIs(first.model, second.model)
             self.assertEqual(len(FakeModel.created), 1)
-            self.assertEqual(FakeModel.created[0][:3], ("medium", "cuda", "float16"))
+            self.assertEqual(FakeModel.created[0][:3], ("turbo", "cuda", "float16"))
             self.assertEqual(FakeModel.created[0][3], cache_dir)
             self.assertFalse(FakeModel.created[0][4])
 
     @patch("app.transcriber._has_windows_cuda_runtime", return_value=True)
-    def test_different_models_have_separate_cache_entries(self, _runtime_available) -> None:
+    def test_legacy_whisper_selection_reuses_fast_runtime(self, _runtime_available) -> None:
         with TemporaryDirectory() as cache_dir, patch.dict(
             "app.transcriber.os.environ", {"NANFENG_TRANSCRIBER_MODEL_DIR": cache_dir}, clear=False
         ):
@@ -116,7 +116,7 @@ class TranscriptionSessionCacheTests(unittest.TestCase):
             session.get_runtime(replace(self.options, model_size="small"), self.progress)
             session.get_runtime(self.options, self.progress)
 
-        self.assertEqual([entry[:3] for entry in FakeModel.created], [("medium", "cuda", "float16"), ("small", "cuda", "float16")])
+        self.assertEqual([entry[:3] for entry in FakeModel.created], [("turbo", "cuda", "float16")])
 
     @patch("app.transcriber._has_windows_cuda_runtime", return_value=True)
     def test_second_session_uses_persistent_local_model_cache(self, _runtime_available) -> None:

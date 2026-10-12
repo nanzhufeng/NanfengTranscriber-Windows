@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .postprocess import polish_to_simplified_chinese
+from .model_modes import model_for_mode
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -23,10 +24,7 @@ _NVIDIA_DLL_HANDLES: list[Any] = []
 _NVIDIA_DLL_DIRECTORIES_ADDED = False
 
 MODEL_REPOS = {
-    "base": "Systran/faster-whisper-base",
-    "small": "Systran/faster-whisper-small",
-    "medium": "Systran/faster-whisper-medium",
-    "large-v3": "Systran/faster-whisper-large-v3",
+    "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
 }
 
 
@@ -69,6 +67,7 @@ class TranscribeOptions:
     ffmpeg_dir: Path | None
     create_video_subfolder: bool = False
     save_beside_video: bool = False
+    precision_subtitles: bool = False
 
 
 @dataclass(frozen=True)
@@ -378,6 +377,10 @@ def _write_docx(target: Path, source: Path, text: str) -> None:
 
 
 def _dll_exists_in_path(dll_names: set[str]) -> bool:
+    if _is_frozen_runtime():
+        portable_libraries = Path(os.environ["LOCALAPPDATA"]) / "NanfengTranscriber" / "runtimes" / "qwen" / "Lib" / "site-packages" / "torch" / "lib"
+        if any((portable_libraries / name).is_file() for name in dll_names):
+            return True
     if not _is_frozen_runtime():
         for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
             spec = importlib.util.find_spec(package_name)
@@ -409,6 +412,10 @@ def _add_nvidia_dll_directories() -> None:
     if _NVIDIA_DLL_DIRECTORIES_ADDED:
         return
     if _is_frozen_runtime():
+        portable_libraries = Path(os.environ["LOCALAPPDATA"]) / "NanfengTranscriber" / "runtimes" / "qwen" / "Lib" / "site-packages" / "torch" / "lib"
+        if portable_libraries.is_dir():
+            _NVIDIA_DLL_HANDLES.append(os.add_dll_directory(str(portable_libraries)))
+            os.environ["PATH"] = str(portable_libraries) + os.pathsep + os.environ.get("PATH", "")
         _NVIDIA_DLL_DIRECTORIES_ADDED = True
         return
     for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
@@ -458,6 +465,7 @@ class TranscriptionSession:
         self._runtimes: dict[tuple[str, str, str], LoadedRuntime] = {}
         self._preferred_batch_sizes: dict[tuple[str, str, str], int] = {}
         self._force_cpu = False
+        self._qwen_worker = None
 
     def _backend_classes(self) -> tuple[Any, Any]:
         if self._model_class is None or self._batched_pipeline_class is None:
@@ -508,6 +516,8 @@ class TranscriptionSession:
         device: str,
         compute_type: str,
     ) -> LoadedRuntime:
+        from dataclasses import replace
+        options = replace(options, model_size=model_for_mode(options.model_size))
         cache_key = (options.model_size, device, compute_type)
         cached = self._runtimes.get(cache_key)
         if cached is not None:
@@ -578,6 +588,11 @@ class TranscriptionSession:
         cancel_callback: CancelCallback | None = None,
     ) -> list[dict[str, Any]]:
         _raise_if_cancelled(cancel_callback)
+        if model_for_mode(options.model_size) == "qwen3-asr":
+            from .qwen_bridge import QwenWorker
+            if self._qwen_worker is None:
+                self._qwen_worker = QwenWorker()
+            return self._qwen_worker.transcribe(audio_path, options, progress_callback, cancel_callback)
         runtime = self.get_runtime(options, progress_callback)
         if runtime.device == "cuda" and runtime.pipeline is not None:
             transcribe_kwargs = self._build_transcribe_kwargs(options, include_initial_prompt=False)
@@ -616,8 +631,7 @@ class TranscriptionSession:
         }
         if language == "zh" and include_initial_prompt:
             transcribe_kwargs["initial_prompt"] = (
-                "以下是音视频中的口播内容。请使用现代简体中文输出；"
-                "如果听到英文、繁体字表达或文言表达，请尽量转成自然、通顺的简体中文意思。"
+                "以下是音视频中的口播内容。请忠实转写原话，保留英文、数字与专有名词，不翻译、不润色。"
             )
         return transcribe_kwargs
 
@@ -737,7 +751,10 @@ class TranscriptionSession:
         cancel_callback: CancelCallback | None,
     ) -> list[dict[str, Any]]:
         segment_iter, _info = model.transcribe(str(audio_path), **transcribe_kwargs)
-        return self._collect_segments(segment_iter, duration, progress_callback, cancel_callback)
+        segments = self._collect_segments(segment_iter, duration, progress_callback, cancel_callback)
+        for segment in segments:
+            segment["language"] = getattr(_info, "language", None)
+        return segments
 
     def _collect_segments(
         self,
@@ -768,6 +785,9 @@ class TranscriptionSession:
         return segments
 
     def close(self) -> None:
+        if self._qwen_worker is not None:
+            self._qwen_worker.close()
+            self._qwen_worker = None
         self._runtimes.clear()
         self._preferred_batch_sizes.clear()
         gc.collect()
@@ -804,7 +824,8 @@ def transcribe_file(
             "安装后重新打开 bat 再开始转写。"
         )
 
-    _add_nvidia_dll_directories()
+    if model_for_mode(options.model_size) == "turbo":
+        _add_nvidia_dll_directories()
 
     _raise_if_cancelled(cancel_callback)
     resolve_output_directory(source, options).mkdir(parents=True, exist_ok=True)
@@ -825,6 +846,11 @@ def transcribe_file(
                 progress_callback,
                 cancel_callback,
             )
+            if options.export_srt and options.precision_subtitles and model_for_mode(options.model_size) == "turbo" and segments:
+                from .qwen_bridge import QwenWorker
+                if active_session._qwen_worker is None:
+                    active_session._qwen_worker = QwenWorker()
+                segments = active_session._qwen_worker.align(audio_path, segments, options, progress_callback, cancel_callback)
     finally:
         if owns_session:
             active_session.close()

@@ -22,7 +22,7 @@ class InnoInstallerContractTests(unittest.TestCase):
         content = (PROJECT_ROOT / "build_windows_installer_inno.ps1").read_text(encoding="utf-8")
         self.assertIn("Inno Setup 6", content)
         self.assertIn("ISCC.exe", content)
-        self.assertIn("NanfengTranscriber_Windows_v${Version}_Setup_${timestamp}", content)
+        self.assertIn("NanfengTranscriber-Windows-v${Version}-Setup", content)
         self.assertIn("InstallerExe = $setupExe", content)
         self.assertNotIn("Compress-Archive", content)
         self.assertNotIn("Install-Readme.zh-CN.txt", content)
@@ -30,7 +30,7 @@ class InnoInstallerContractTests(unittest.TestCase):
 
     def test_release_contract_is_a_single_windows_setup_exe(self) -> None:
         readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("NanfengTranscriber_Windows_*_Setup_*.exe", readme)
+        self.assertIn("NanfengTranscriber-Windows-v1.0.5-Setup.exe", readme)
         self.assertNotIn("NanfengTranscriber_Windows_*.zip", readme)
 
 

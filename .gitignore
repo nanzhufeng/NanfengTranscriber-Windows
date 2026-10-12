@@ -1,5 +1,6 @@
 # Python caches and local environments
 __pycache__/
+.runtime/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/

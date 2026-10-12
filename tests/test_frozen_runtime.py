@@ -58,7 +58,7 @@ class FrozenRuntimeTests(unittest.TestCase):
             start_worker.assert_called_once()
             items, options = start_worker.call_args.args
             self.assertEqual(len(items), 1)
-            self.assertIn(options.compute_mode, {"GPU 优先", "CPU 稳定"})
+            self.assertIn(options.compute_mode, {"GPU 快速", "CPU 稳定"})
             window.close()
 
 
