@@ -155,6 +155,29 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 combo.hidePopup()
             window.close()
 
+    def test_selected_row_controls_share_the_table_background(self):
+        with TemporaryDirectory() as temp_dir:
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            window = main.MainWindow(settings=settings)
+            window.table.setRowCount(1)
+            for column in range(12):
+                window._set_cell(0, column, "")
+            window._set_combo_cell(0, main.COL_LANGUAGE, ["自动识别"], "自动识别")
+            window._set_combo_cell(0, main.COL_MODEL, ["中文精确"], "中文精确")
+            window._set_locate_button(0)
+            window.show()
+            self.app.processEvents()
+            window.table.selectRow(0)
+            window.table.setFocus()
+            self.app.processEvents()
+            image = window.table.viewport().grab().toImage()
+            for column in (main.COL_LANGUAGE, main.COL_MODEL, main.COL_LOCATE):
+                rect = window.table.visualItemRect(window.table.item(0, column))
+                center = image.pixelColor(rect.left() + 12, rect.center().y())
+                upper = image.pixelColor(rect.left() + 12, rect.top() + 5)
+                self.assertEqual(center, upper, "Controls must not overlay a second selection surface")
+            window.close()
+
     def test_selected_mode_keeps_both_text_lines_readable(self):
         from PySide6.QtCore import QRect
         from PySide6.QtGui import QImage, QPainter, QPalette

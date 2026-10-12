@@ -4,19 +4,19 @@
 
 ## 软件界面预览
 
-Windows v1.0.6 当前构建运行截图，主窗口 1600×1000。
+Windows v1.0.7 当前构建运行截图，主窗口 1600×1000。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.6.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.7.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.6.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.7.png)
 
-## v1.0.6 更新
+## v1.0.7 更新
 
-- 页面改为纯浅灰底，内容采用无描边白色分区，输入框使用浅灰填充。
-- 按钮保留颜色：柔和蓝色主操作、浅橙/浅紫导入，以及红色停止提示。
-- 设置、开关、导出勾选与模式菜单采用清晰的选中状态，移除绿色主题强调。
-- 操作按钮圆角与高度统一，队列使用完整的圆角白色工作区。
-- 沿用精简安装包和按需安装的独立本地模型运行环境。
+- 模式菜单选中行改为浅灰底与左侧细色条，移除整圈描边。
+- 队列表头灰底贴齐顶部和两侧，保留圆角。
+- 语言、模式和定位控件默认透明，选中时不再叠加两层背景。
+- 统一当前开发合同、产品版本和模型显示来源，完善打包检查与启动器错误反馈。
+- 保留精简安装包及按需安装的本地模型运行环境。
 
 ## 功能
 
@@ -37,7 +37,7 @@ Windows v1.0.6 当前构建运行截图，主窗口 1600×1000。
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.6-Setup.exe`，双击安装。Release 提供安装程序本体及 SHA-256 校验；安装说明以本 README 为准。
+从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.7-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 
@@ -45,7 +45,7 @@ Windows 安装包未签名，系统可能显示未知发布者提示。
 
 ## 源码运行
 
-中文精确使用独立的本地 Python 运行环境。首次运行 `安装中文精确运行环境_Windows.bat` 安装依赖，再运行 `测试最新设置_Windows.bat`。环境位于项目 `.runtime/qwen`，也可通过 `NANFENG_QWEN_PYTHON` 指定已有环境的 Python。模型首次下载后保存在用户级缓存，后续离线复用；语音推理和字幕对齐不上传音频。
+中文精确使用独立的本地 Python 运行环境。首次运行 `安装中文精确运行环境_Windows.bat` 安装依赖，再运行 `启动最新界面_Windows.bat`。环境位于项目 `.runtime/qwen`，也可通过 `NANFENG_QWEN_PYTHON` 指定已有环境的 Python。模型首次下载后保存在用户级缓存，后续离线复用；语音推理和字幕对齐不上传音频。
 
 旧版本 Whisper 选择自动迁移为通用快速；旧缓存不再作为可选模型加载。日语精确字幕额外需要 `nagisa` 分词依赖，未安装时请使用快速模式的原生时间戳；精确字幕失败会提示原因，不伪造对齐时间。
 
@@ -55,6 +55,7 @@ Windows 安装包未签名，系统可能显示未知发布者提示。
 
 ```powershell
 python -m pip install -r requirements.txt
+python tools/check_project_contracts.py
 python -m unittest discover -s tests -v
 python start.py
 ```
@@ -63,16 +64,16 @@ Windows 也可双击 `启动南枫转写_Windows_源码测试.bat`。本地模�
 
 ## 翻译与润色
 
-“翻译润色”是可选的联网能力，需要配置 `NANZHU_TEXT_API_KEY` 或 `OPENAI_API_KEY`。未配置密钥时，软件只执行本地原始转写，不会上传音视频文件。
+“翻译润色”是可选的联网能力，需要配置 `NANZHU_TEXT_API_KEY` 或 `OPENAI_API_KEY`。未配置密钥时默认关闭；若手动开启，软件会提示缺少 API 并阻止开始，取消勾选后可只做本地转写。联网润色发送文字和文件标题，不上传音视频文件。
 
 API 鉴权失败、请求超时、空响应和异常响应格式均有独立错误提示；错误信息不会回显 API Key 或服务端原始响应。
 
 ## 当前验证状态
 
 - 自动化测试覆盖已有结果续跑、API 鉴权/超时/空响应、模型持久缓存、设置记忆、逐项定位、结束反馈、Inno 安装器合同和四档 DPI 截图基线。
-- Windows RTX 4090 固定三样本基准中，队列耗时从 130.499 秒降至 28.403 秒。
+- 历史 medium/RTX 4090 三样本基准为 130.499 秒到 28.403 秒；这不是当前 Qwen/Turbo 的准确率或速度对比。旧四档 DPI 资产检查也不等于当前真实多显示器验收。
 - macOS 版本尚未实现；迁移要求见 `docs/MAC_CODEX_START_PROMPT.md`。
-- 当前技术栈、目录结构与工程事实见 `docs/context.md`；正式经验审计见 `docs/development-experience-audit.md`；动态开发状态见 `docs/CURRENT_HANDOFF.md`；产品与历史经验见 `docs/chatgpt-project-context.md`。
+- 当前行为见 [合同](docs/CONTRACTS.md)，结构见 [架构入口](docs/context.md)，维护检查见 [合同审计](docs/contract-audit.md)，实际验证见 [当前状态](docs/PROJECT_STATUS.md)，历史证据见 [历史索引](docs/HISTORY.md)。
 
 ## 许可证
 

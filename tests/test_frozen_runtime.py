@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -60,6 +61,16 @@ class FrozenRuntimeTests(unittest.TestCase):
             self.assertEqual(len(items), 1)
             self.assertIn(options.compute_mode, {"GPU 快速", "CPU 稳定"})
             window.close()
+
+    def test_ui_and_inference_share_owned_runtime_dll_detection(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.dict(os.environ, {"LOCALAPPDATA": temp_dir, "PATH": ""}), patch("sys.frozen", True, create=True), patch("app.transcriber.importlib.util.find_spec") as find_spec:
+            libraries = Path(temp_dir) / "NanfengTranscriber/runtimes/qwen/Lib/site-packages/torch/lib"
+            libraries.mkdir(parents=True)
+            (libraries / "cublas64_12.dll").touch()
+            self.assertTrue(transcriber.gpu_libraries_available({"cublas64_12.dll"}))
+            self.assertTrue(main.MainWindow._dll_exists_in_path(None, {"cublas64_12.dll"}))
+            self.assertFalse(main.MainWindow._dll_exists_in_path(None, {"cudnn64_9.dll"}))
+            find_spec.assert_not_called()
 
 
 if __name__ == "__main__":

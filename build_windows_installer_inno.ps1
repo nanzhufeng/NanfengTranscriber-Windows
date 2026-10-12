@@ -1,6 +1,7 @@
-param(
-    [string]$Version = '1.0.0',
-    [string]$SourceAppPath = ''
+﻿param(
+    [string]$Version = '',
+    [string]$SourceAppPath = '',
+    [switch]$ValidateOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,24 +10,50 @@ $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ($SourceAppPath) {
     $sourceAppDir = Get-Item -LiteralPath $SourceAppPath
 } else {
-$releaseDir = Get-ChildItem -LiteralPath $projectDir -Directory -Filter 'dist_release_*' |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+    $currentRelease = Join-Path $projectDir 'dist_release_current'
+    $releaseDir = if (Test-Path -LiteralPath (Join-Path $currentRelease '南枫转写/南枫转写.exe')) {
+        Get-Item -LiteralPath $currentRelease
+    } else {
+        Get-ChildItem -LiteralPath $projectDir -Directory -Filter 'dist_release_*' |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+    }
 
-if (-not $releaseDir) {
-    throw 'No dist_release_* directory was found. Build the Windows application first.'
-}
+    if (-not $releaseDir) {
+        throw 'No dist_release_* directory was found. Build the Windows application first.'
+    }
 
-$sourceAppDir = Get-ChildItem -LiteralPath $releaseDir.FullName -Directory |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.exe')) } |
-    Select-Object -First 1
+    $sourceAppDir = Get-ChildItem -LiteralPath $releaseDir.FullName -Directory |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.exe')) } |
+        Select-Object -First 1
 
-if (-not $sourceAppDir) {
-    throw ('No application folder with matching exe was found in: ' + $releaseDir.FullName)
-}
+    if (-not $sourceAppDir) {
+        throw ('No application folder with matching exe was found in: ' + $releaseDir.FullName)
+    }
 }
 if (-not $sourceAppDir.FullName -or -not (Test-Path -LiteralPath (Join-Path $sourceAppDir.FullName '南枫转写.exe'))) {
     throw 'Installer source must be the built application directory.'
+}
+$metadataFile = Join-Path $sourceAppDir.FullName '_internal/app/assets/product.json'
+if (-not (Test-Path -LiteralPath $metadataFile)) {
+    throw 'Built product metadata is missing. Rebuild with scripts/build_windows_app.ps1 first.'
+}
+$builtProduct = [IO.File]::ReadAllText($metadataFile) | ConvertFrom-Json
+$sourceProduct = [IO.File]::ReadAllText((Join-Path $projectDir 'app/assets/product.json')) | ConvertFrom-Json
+if ($builtProduct.version -notmatch '^\d+\.\d+\.\d+$' -or $builtProduct.version -ne $sourceProduct.version) {
+    throw 'Built and source versions differ. Rebuild the current application before packaging.'
+}
+if ($Version -and $Version -ne $builtProduct.version) {
+    throw 'Requested installer version differs from the built application version.'
+}
+$Version = $builtProduct.version
+if ($ValidateOnly) {
+    [pscustomobject]@{
+        Version = $Version
+        SourceApp = $sourceAppDir.FullName
+        InstallerName = "NanfengTranscriber-Windows-v${Version}-Setup.exe"
+    } | ConvertTo-Json -Compress
+    return
 }
 
 $isccCandidates = @(

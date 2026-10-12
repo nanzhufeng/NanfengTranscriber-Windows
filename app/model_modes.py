@@ -4,6 +4,10 @@ MODE_OPTIONS = ["中文精确", "通用快速"]
 QWEN_MODEL = "Qwen/Qwen3-ASR-1.7B-hf"
 ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B-hf"
 FAST_MODEL = "large-v3-turbo"
+MODE_MODEL_LABELS = {
+    "中文精确": "Qwen3-ASR-1.7B",
+    "通用快速": "Whisper large-v3-turbo",
+}
 
 
 def model_for_mode(value: str) -> str:

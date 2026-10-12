@@ -8,7 +8,7 @@
   #define MyOutputBaseFilename "NanfengTranscriber_Windows_Setup"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #error MyAppVersion is required
 #endif
 #ifndef MySetupIconFile
   #define MySetupIconFile "..\app\assets\nanfeng-transcriber-icon.ico"

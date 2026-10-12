@@ -1,0 +1,21 @@
+{
+  "version": "1.0.7",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.7-Setup.exe",
+  "bytes": 159822661,
+  "sha256": "a964689c54c05250a3ee584d058d26735d4e3ca4afdf768c8f5e24cad26a7a7c",
+  "authenticode": "NotSigned",
+  "automatedTests": 57,
+  "releaseContractChecks": 23,
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use",
+  "payloadFilesVerified": 784,
+  "offlineTranscription": {
+    "success": true,
+    "characters": 45,
+    "srtCues": 4,
+    "input": "controlled synthetic speech",
+    "network": "disabled"
+  }
+}

@@ -1,14 +1,8 @@
-南枫转写 Windows 可点击安装包
+南枫转写 Windows 安装说明
 
-使用方式：
-1. 解压整个 zip。
-2. 双击“南枫转写_Setup.exe”。
-3. 安装完成后，会自动创建桌面快捷方式和开始菜单快捷方式。
-4. 默认安装位置：
-   %LOCALAPPDATA%\Programs\南枫转写
+1. 下载 NanfengTranscriber-Windows-v1.0.7-Setup.exe，直接双击，无需外层 ZIP。
+2. 默认安装到 %LOCALAPPDATA%/Programs/南枫转写，提供开始菜单和可选桌面快捷方式。
+3. 首次使用中文精确或精确字幕时按软件提示安装独立运行环境，再点击开始；环境及模型在用户级目录复用。
+4. Windows 安装包默认未签名，系统可能提示未知发布者。
 
-说明：
-- 这是可点击安装版本，不是便携版。
-- 首次使用 medium 模型可能需要联网下载模型文件。
-- 如果 GPU 环境缺少 CUDA / cuBLAS / cuDNN，软件会自动回退 CPU。
-- 安装完成后可以从桌面快捷方式启动。
+升级保留设置、模型及运行环境；详情和校验文件见 GitHub Releases 与 README.md。

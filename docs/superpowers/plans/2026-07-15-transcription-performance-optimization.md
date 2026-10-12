@@ -1,3 +1,5 @@
+> 历史证据：本文件保留当时的事实和结论，不定义当前合同。当前行为以 [CONTRACTS.md](../../CONTRACTS.md) 为准。
+
 # 转录性能均衡优化 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from app.product_info import APP_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,7 @@ class InnoInstallerContractTests(unittest.TestCase):
 
     def test_release_contract_is_a_single_windows_setup_exe(self) -> None:
         readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("NanfengTranscriber-Windows-v1.0.5-Setup.exe", readme)
+        self.assertIn(f"NanfengTranscriber-Windows-v{APP_VERSION}-Setup.exe", readme)
         self.assertNotIn("NanfengTranscriber_Windows_*.zip", readme)
 
 

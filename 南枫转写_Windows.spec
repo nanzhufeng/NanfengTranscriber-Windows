@@ -5,7 +5,6 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 datas = [
     ('app\\qwen_worker.py', 'app'),
     ('app\\assets', 'app/assets'),
-    ('..\\CleanVideoDownloader\\app\\assets', 'app/assets'),
     ('..\\JHlib\\ffmpeg', 'tools/ffmpeg'),
 ]
 binaries = []

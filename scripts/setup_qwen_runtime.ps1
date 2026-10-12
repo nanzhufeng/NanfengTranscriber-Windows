@@ -1,4 +1,4 @@
-param([string]$RuntimeDirectory = '', [switch]$BootstrapOnly)
+﻿param([string]$RuntimeDirectory = '', [switch]$BootstrapOnly)
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $projectPath = Split-Path -Parent $PSScriptRoot

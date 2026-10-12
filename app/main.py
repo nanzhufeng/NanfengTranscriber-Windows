@@ -65,16 +65,12 @@ from .transcriber import (
     safe_output_stem,
     resolve_output_directory,
     transcribe_file,
+    gpu_libraries_available,
 )
 
 
-from .model_modes import MODE_OPTIONS, mode_description, model_for_mode
-
-APP_NAME = "南枫转写"
-APP_VERSION = "1.0.6"
-APP_DEVELOPED_AT = "2026-10-12 18:18"
-GITHUB_REPOSITORY = "nanzhufeng/NanfengTranscriber-Windows"
-GITHUB_REPOSITORY_URL = f"https://github.com/{GITHUB_REPOSITORY}"
+from .model_modes import MODE_OPTIONS, MODE_MODEL_LABELS, mode_description, model_for_mode
+from .product_info import APP_NAME, APP_VERSION, APP_DEVELOPED_AT, GITHUB_REPOSITORY, GITHUB_REPOSITORY_URL
 SUPPORTED_EXTENSIONS = {
     ".mp4",
     ".mov",
@@ -665,12 +661,12 @@ class ModeItemDelegate(QStyledItemDelegate):
         painter.fillRect(option.rect, QColor("#ffffff"))
         surface = option.rect.adjusted(4, 2, -4, -2)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#e5e7eb") if selected else QColor("#f3f4f6") if hovered else QColor("#ffffff"))
+        focused = bool(option.state & QStyle.State_HasFocus)
+        painter.setBrush(QColor("#f4f4f4") if selected or hovered or focused else QColor("#ffffff"))
         painter.drawRoundedRect(surface, 6, 6)
-        if option.state & QStyle.State_HasFocus:
-            painter.setPen(QColor("#6b7280"))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(surface, 6, 6)
+        if selected:
+            painter.setBrush(QColor("#c43c3c"))
+            painter.drawRoundedRect(surface.left() + 2, surface.center().y() - 10, 2, 20, 1, 1)
         draw_mode_lines(painter, option.rect.adjusted(8, 4, -8, -4), index.data(), index.data(Qt.UserRole), selected)
         painter.restore()
 
@@ -730,8 +726,8 @@ class TranscriptionModeCombo(ToggleComboBox):
         self.setItemDelegate(ModeItemDelegate(self))
         self.setFixedSize(150, 36)
         self.view().setMinimumWidth(220)
-        self.addItem("中文精确", "Qwen3-ASR-1.7B")
-        self.addItem("通用快速", "Whisper large-v3-turbo")
+        for name in MODE_OPTIONS:
+            self.addItem(name, MODE_MODEL_LABELS[name])
         for index in range(self.count()):
             self.setItemData(index, mode_description(self.itemText(index))[0], Qt.ToolTipRole)
         self.currentTextChanged.connect(lambda name: self.setToolTip(mode_description(name)[0]))
@@ -962,10 +958,7 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _asset_path(self, name: str) -> Path:
-        packaged_asset = self.project_root / "app" / "assets" / name
-        if packaged_asset.exists():
-            return packaged_asset
-        return self.project_root.parent / "CleanVideoDownloader" / "app" / "assets" / name
+        return self.project_root / "app" / "assets" / name
 
     def _debug_log(self, message: str) -> None:
         try:
@@ -1306,7 +1299,7 @@ class MainWindow(QMainWindow):
         queue_panel = QFrame()
         queue_panel.setObjectName("QueuePanel")
         queue_layout = QVBoxLayout(queue_panel)
-        queue_layout.setContentsMargins(8, 8, 8, 8)
+        queue_layout.setContentsMargins(0, 0, 0, 0)
         queue_layout.setSpacing(0)
         queue_layout.addWidget(self.table)
         layout.addWidget(queue_panel, 1)
@@ -1391,7 +1384,9 @@ class MainWindow(QMainWindow):
             QComboBox#TableCombo {
                 min-width: 0px;
                 padding: 4px;
+                background: transparent;
             }
+            QComboBox#TableCombo:hover, QComboBox#TableCombo:focus, QComboBox#TableCombo:on { background: transparent; }
             QComboBox#TableCombo::drop-down {
                 width: 0px;
                 border: none;
@@ -1408,6 +1403,7 @@ class MainWindow(QMainWindow):
                 padding: 0;
                 selection-background-color: transparent;
             }
+            QComboBox#TableCombo QLineEdit:focus { background: transparent; }
             QPushButton { background: #f1f1f1; color: #374151; border: none; border-radius: 18px; padding: 9px 14px; min-width: 82px; }
             QPushButton:hover, QPushButton:focus { background: #e5e5e5; }
             QPushButton:pressed { background: #d9d9d9; }
@@ -1446,10 +1442,12 @@ class MainWindow(QMainWindow):
             QPushButton#SelectButton:hover, QPushButton#SelectButton:focus { background: #e0e8ff; }
             QPushButton#InvertButton { background: #f1ebfc; border: none; color: #7653aa; font-weight: 600; }
             QPushButton#InvertButton:hover, QPushButton#InvertButton:focus { background: #e7dcf7; }
-            QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: #f1f1f1; border: none; border-radius: 14px; }
-            QPushButton#LocateButton:hover { background: #e5e5e5; }
+            QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: transparent; border: none; border-radius: 14px; }
+            QPushButton#LocateButton:hover, QPushButton#LocateButton:focus, QPushButton#LocateButton:pressed { background: transparent; }
             QTableWidget { background: #ffffff; alternate-background-color: #fafafa; border: none; border-radius: 12px; gridline-color: #ffffff; selection-background-color: #e5e7eb; selection-color: #1f2937; }
             QHeaderView::section { background: #f4f4f4; color: #374151; padding: 10px 8px; border: none; font-weight: 600; }
+            QHeaderView::section:horizontal:first { border-top-left-radius: 16px; }
+            QHeaderView::section:horizontal:last { border-top-right-radius: 16px; }
             QProgressBar { background: #e3e3e3; border: none; border-radius: 6px; height: 16px; text-align: center; color: #374151; }
             QProgressBar::chunk { background: #9ca3af; border-radius: 5px; }
             QCheckBox { color: #29434b; font-weight: 700; }
@@ -1681,6 +1679,7 @@ class MainWindow(QMainWindow):
         layout.setAlignment(Qt.AlignCenter)
         layout.addWidget(button)
         self.table.setCellWidget(row, COL_LOCATE, container)
+        container.setAutoFillBackground(False)
 
     def _update_output_cell(self, row: int, text: str, output_file: Path | None = None) -> QTableWidgetItem:
         previous = self.table.item(row, COL_OUTPUT)
@@ -1782,6 +1781,7 @@ class MainWindow(QMainWindow):
             combo.currentTextChanged.connect(lambda text: combo.setToolTip("\n".join(mode_description(text))))
         combo.setFixedWidth(max(86, self.table.columnWidth(column) - 8))
         self.table.setCellWidget(row, column, combo)
+        combo.setAutoFillBackground(False)
 
     def _status_colors(self, status: str) -> tuple[QColor, QColor]:
         if status == "完成":
@@ -1984,24 +1984,7 @@ class MainWindow(QMainWindow):
         self.worker_thread.start()
 
     def _dll_exists_in_path(self, dll_names: set[str]) -> bool:
-        # 冻结版不通过 find_spec 查找外部 Python 包。该调用在部分 PyInstaller
-        # 环境会阻塞主线程；安装包内的 DLL 由 PATH 或系统 CUDA 路径提供。
-        if not _is_frozen_runtime():
-            for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
-                spec = importlib.util.find_spec(package_name)
-                if spec and spec.submodule_search_locations:
-                    bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
-                    for dll_name in dll_names:
-                        if (bin_dir / dll_name).exists():
-                            return True
-        for folder in os.environ.get("PATH", "").split(os.pathsep):
-            if not folder:
-                continue
-            base = Path(folder)
-            for dll_name in dll_names:
-                if (base / dll_name).exists():
-                    return True
-        return False
+        return gpu_libraries_available(dll_names)
 
     def _warn_gpu_runtime_if_needed(self) -> bool:
         if all(model_for_mode(item.model_size) == "qwen3-asr" for item in self._selected_items()):

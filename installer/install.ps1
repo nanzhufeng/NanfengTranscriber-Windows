@@ -1,11 +1,12 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $payload = Join-Path $PSScriptRoot 'payload.zip'
 if (-not (Test-Path -LiteralPath $payload)) {
     throw 'payload.zip is missing.'
 }
 
-$tempExtract = Join-Path $env:TEMP ('nanfeng_transcriber_install_' + [Guid]::NewGuid().ToString('N'))
+$temporaryRoot = [IO.Path]::GetFullPath($env:TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar)
+$tempExtract = [IO.Path]::GetFullPath((Join-Path $temporaryRoot ('nanfeng_transcriber_install_' + [Guid]::NewGuid().ToString('N'))))
 New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null
 
 try {
@@ -69,6 +70,10 @@ catch {
 }
 finally {
     if (Test-Path -LiteralPath $tempExtract) {
-        Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+        $cleanupTarget = [IO.Path]::GetFullPath($tempExtract)
+        if (-not $cleanupTarget.StartsWith($temporaryRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Refusing cleanup outside the owned temporary directory.'
+        }
+        Remove-Item -LiteralPath $cleanupTarget -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

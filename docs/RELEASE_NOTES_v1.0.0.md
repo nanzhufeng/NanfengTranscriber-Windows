@@ -1,3 +1,5 @@
+> 历史证据：本文件保留当时的事实和结论，不定义当前合同。当前行为以 [CONTRACTS.md](CONTRACTS.md) 为准。
+
 # 南枫转写 Windows v1.0.0
 
 这是项目的首个 GitHub 版本，提供 Windows 可点击安装包和完整源码。

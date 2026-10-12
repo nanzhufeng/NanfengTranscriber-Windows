@@ -125,9 +125,9 @@ class GpuMemoryMonitor:
 def make_options(output_dir: Path) -> transcriber.TranscribeOptions:
     return transcriber.TranscribeOptions(
         output_dir=output_dir,
-        model_size="medium",
+        model_size="通用快速",
         language="中文",
-        compute_mode="GPU 优先",
+        compute_mode="GPU 快速",
         export_txt=True,
         export_md=False,
         export_srt=False,

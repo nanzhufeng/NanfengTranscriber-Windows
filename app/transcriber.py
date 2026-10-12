@@ -376,6 +376,11 @@ def _write_docx(target: Path, source: Path, text: str) -> None:
     document.save(str(target))
 
 
+def gpu_libraries_available(dll_names: set[str]) -> bool:
+    """Shared DLL presence check for UI preflight and inference selection."""
+    return _dll_exists_in_path(dll_names)
+
+
 def _dll_exists_in_path(dll_names: set[str]) -> bool:
     if _is_frozen_runtime():
         portable_libraries = Path(os.environ["LOCALAPPDATA"]) / "NanfengTranscriber" / "runtimes" / "qwen" / "Lib" / "site-packages" / "torch" / "lib"

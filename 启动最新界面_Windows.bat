@@ -10,11 +10,7 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
-if /i "%~1"=="--check" (
-    python -c "import PySide6; import app.main; print('Launcher check OK')"
-    popd
-    exit /b
-)
+if /i "%~1"=="--check" goto check
 if not exist ".runtime" mkdir ".runtime"
 echo 正在启动南枫转写最新界面……
 python "%~dp0start.py" >"%~dp0.runtime\latest-launch.log" 2>&1
@@ -26,3 +22,9 @@ if not "%TRANSCRIBER_EXIT%"=="0" (
 )
 popd
 exit /b %TRANSCRIBER_EXIT%
+
+:check
+python -c "import PySide6; import app.main; print('Launcher check OK')"
+set "TRANSCRIBER_CHECK_EXIT=%ERRORLEVEL%"
+popd
+exit /b %TRANSCRIBER_CHECK_EXIT%

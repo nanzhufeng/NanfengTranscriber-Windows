@@ -1,25 +1,28 @@
-# 南枫转写：项目协作规则
+# 南枫转写 Windows：项目协作合同
 
-默认使用简体中文，称呼用户为“南烛枫”。这是本地优先的批量音视频转写工具，不是视频下载器，也不是南枫记。
+默认简体中文，称呼“南烛枫”。这是本地优先的批量音视频转写工具。
 
-新会话先读：
+## 事实源与接手
 
-1. `docs/context.md`
-2. `docs/CURRENT_HANDOFF.md`
-3. `docs/development-experience-audit.md`
-4. `docs/chatgpt-project-context.md`
-5. `git status --short`
+1. 先读 [当前状态](docs/PROJECT_STATUS.md)、[当前合同](docs/CONTRACTS.md) 和 [架构入口](docs/context.md)。需要恢复执行细节时再读 [交接](docs/CURRENT_HANDOFF.md)。
+2. 当前用户指令、可验证代码与当前测试优先；历史记录仅是证据，不重新定义当前行为。版本身份由 `app/assets/product.json` 唯一维护。
+3. Git 先看范围/数量或 `diff --stat`，再读限定文件；保护未提交改动。不得用 reset、clean、stash 制造干净状态。
 
-再报告：当前进度、已修改文件、最近验证结果、下一件最小可验收任务。未确认新任务前，不改动代码。
+## 实现与安全
 
-工作原则：
+- 保持工作台与批量队列功能；表格默认居中，状态文案和颜色读取真实结果。
+- 模型目录由 `app/model_modes.py` 拥有；旧模型名称用于兼容，不新增为可选项。
+- 推理、输出路径、已有结果检查和设置持久化遵守当前合同；先复用唯一所有者，不在 UI 再造规则。
+- 重复反馈必须形成行为回归或确定性检查；不得只更新说明文字。
+- 不删除用户媒体、输出、模型缓存或密钥；停止仅针对本任务拥有的进程。测试使用隔离设置、目录与受控样本。
+- API 密钥和原始服务响应不得进入截图、仓库或发布资产；音频本地处理，联网润色的文字传输必须明确。
+- 固定复用 `build` 和 `dist_release_current`；不按版本复制整套编译缓存。
 
-- 保持现有工作台 UI 和批量队列逻辑；不要重做成营销页面。
-- 所有表格默认居中，状态通过颜色和文案清晰区分。
-- 先源码验证，再打包；不要把源码验证写成安装包已验证。
-- 报告必须分开：已实现、自动测试、构建、真实 Windows/媒体/服务验证和待验证风险。
-- 重复出现的用户反馈应补契约测试或确定性检查，不能只更新说明文字。
-- 发布到 GitHub 时默认提供与当前版本一致的软件界面截图，并在 README 和 Release 说明中展示；截图不得包含真实用户文件、密钥或其他隐私数据。
-- 保留本地优先和可解释失败：依赖、模型下载、GPU、FFmpeg、路径和 API Key 都要给出可操作状态。
-- 不要用宽泛异常吞掉错误；对删除、覆盖、安装、系统状态变化和外部网络操作先说明影响。
-- Mac 迁移必须从源码开始，不能复用 Windows 的 EXE、IExpress、`.bat`、DLL 探测或 `D:` 路径。
+## 验证与交付
+
+- 本地入口：`启动最新界面_Windows.bat`；只在用户要求时生成安装包/发布。源码、构建、安装、真实媒体/API 与发布分别报告。
+- 修改完成后运行 `python tools/check_project_contracts.py` 和受影响测试；交付前完整测试与相关 Windows 验证。最终 README、版本、收据更新后再跑合同门禁。
+- 正式 Windows 路径是 PyInstaller + Inno；IExpress 脚本仅保留历史兼容，不用于正式发布。
+- 当前界面截图仅在 README 展示；Release 正文简洁，不嵌入或附加截图。发布附件是安装 EXE 与必要校验文件。
+- Windows 默认未签名发布并如实核验；其他平台不能继承该例外。交付方法路由 `develop-apps-with-nanfeng-product-standards/references/delivery-and-acceptance.md`。
+- 跨端迁移从源码开始，不复用 Windows 的 EXE、BAT、DLL 探测或盘符。
