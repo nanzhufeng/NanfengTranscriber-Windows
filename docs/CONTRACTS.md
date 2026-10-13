@@ -53,6 +53,8 @@
 
 ## 运行环境、进度与回退
 
+- 环境安装脚本以临时 Python 文件执行校验，成功/失败均清理；`-VerifyOnly` 仅校验已有 Python 与模型依赖，不下载或安装依赖。校验通过后写入就绪标记。
+
 - 源码 Qwen 环境优先显式 `NANFENG_QWEN_PYTHON`，否则 `.runtime/qwen`；冻结版在用户级 `NanfengTranscriber/runtimes/qwen`。冻结版默认需要 `runtime.ready`，显式覆盖保留现有例外。
 - 主安装包不含 Torch/CUDA 或模型权重。首次需 Qwen 的冻结任务提示打开安装 BAT；完成后用户再次点击开始。嵌入 Python 3.13.3、Torch 2.11.0 cu128、其余版本见 `requirements-qwen.txt`。
 - 默认模型缓存 `%LOCALAPPDATA%/NanfengTranscriber/models`，`NANFENG_TRANSCRIBER_MODEL_DIR` 可覆盖。成功后优先本地；损坏/缺失时可联网修复。升级不删除或复制旧缓存。

@@ -1,6 +1,6 @@
 南枫转写 Windows 安装说明
 
-1. 下载 NanfengTranscriber-Windows-v1.0.7-Setup.exe，直接双击，无需外层 ZIP。
+1. 下载 NanfengTranscriber-Windows-v1.0.8-Setup.exe，直接双击，无需外层 ZIP。
 2. 默认安装到 %LOCALAPPDATA%/Programs/南枫转写，提供开始菜单和可选桌面快捷方式。
 3. 首次使用中文精确或精确字幕时按软件提示安装独立运行环境，再点击开始；环境及模型在用户级目录复用。
 4. Windows 安装包默认未签名，系统可能提示未知发布者。

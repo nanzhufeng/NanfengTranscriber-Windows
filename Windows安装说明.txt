@@ -1,6 +1,6 @@
 南枫转写 Windows 运行说明
 
-推荐从 GitHub Release 下载 NanfengTranscriber-Windows-v1.0.7-Setup.exe，双击安装。当前默认未签名，Windows 可能提示未知发布者。
+推荐从 GitHub Release 下载 NanfengTranscriber-Windows-v1.0.8-Setup.exe，双击安装。当前默认未签名，Windows 可能提示未知发布者。
 若使用 PyInstaller 应用目录，双击南枫转写.exe，必须保留整个目录和 _internal，不要只移动 EXE。
 
 软件支持中文精确与通用快速。主包不含模型权重或大型 Torch/CUDA 环境；首次使用中文精确或精确字幕会提示安装独立环境，完成后再次开始。下载完成后复用本机缓存。

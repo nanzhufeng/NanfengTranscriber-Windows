@@ -1275,6 +1275,8 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.ElideRight)
         self.table.itemClicked.connect(self._on_table_item_clicked)
         self.table.viewport().installEventFilter(self)
         self.table.setItemDelegateForColumn(COL_SELECT, CenteredCheckBoxDelegate(self.table))

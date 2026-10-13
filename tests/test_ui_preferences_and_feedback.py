@@ -155,6 +155,28 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 combo.hidePopup()
             window.close()
 
+    def test_long_queue_text_stays_on_one_line_with_full_tooltip(self):
+        with TemporaryDirectory() as temp_dir:
+            window = main.MainWindow(settings=QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
+            window.table.setRowCount(1)
+            window.table.setRowHeight(0, 48)
+            text = "长文件名与完整输出路径" * 30
+            for column in (main.COL_FILE, main.COL_OUTPUT):
+                window._set_cell(0, column, text)
+            window.show()
+            self.app.processEvents()
+            image = window.table.viewport().grab().toImage()
+            for column in (main.COL_FILE, main.COL_OUTPUT):
+                item = window.table.item(0, column)
+                self.assertEqual(item.toolTip(), text)
+                rect = window.table.visualItemRect(item)
+                ink_rows = [y for y in range(rect.top() + 2, rect.bottom() - 1)
+                            if any(image.pixelColor(x, y).lightness() < 140
+                                   for x in range(rect.left() + 8, rect.right() - 8))]
+                self.assertTrue(ink_rows)
+                self.assertLessEqual(max(ink_rows) - min(ink_rows) + 1, window.table.fontMetrics().height() + 2)
+            window.close()
+
     def test_selected_row_controls_share_the_table_background(self):
         with TemporaryDirectory() as temp_dir:
             settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)

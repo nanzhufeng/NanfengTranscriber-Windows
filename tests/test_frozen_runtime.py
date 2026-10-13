@@ -38,9 +38,9 @@ class FrozenRuntimeTests(unittest.TestCase):
             )
 
     def test_frozen_transcriber_skips_external_nvidia_package_scan(self) -> None:
-        with patch("app.transcriber._is_frozen_runtime", return_value=True), patch(
+        with TemporaryDirectory() as temp_dir, patch("app.transcriber._is_frozen_runtime", return_value=True), patch(
             "app.transcriber.importlib.util.find_spec"
-        ) as find_spec, patch.dict("app.transcriber.os.environ", {"PATH": ""}, clear=False):
+        ) as find_spec, patch.dict("app.transcriber.os.environ", {"PATH": "", "LOCALAPPDATA": temp_dir}, clear=False):
             self.assertFalse(transcriber._dll_exists_in_path({"cublas64_12.dll"}))
             find_spec.assert_not_called()
 

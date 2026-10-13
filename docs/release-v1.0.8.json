@@ -1,0 +1,28 @@
+{
+  "version": "1.0.8",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.8-Setup.exe",
+  "bytes": 159832691,
+  "sha256": "1bf656557a966de52876e4591ec7a89f9055adffd80254c21162c36accd3b65f",
+  "authenticode": "NotSigned",
+  "automatedTests": 59,
+  "releaseContractChecks": 23,
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use",
+  "payloadFilesVerified": 784,
+  "packagedPowerShell5Verification": "PASS - existing user runtime CUDA True",
+  "offlineTranscription": {
+    "success": true,
+    "mode": "中文精确",
+    "characters": 45,
+    "exports": [
+      "speech.txt",
+      "speech.srt"
+    ],
+    "notices": [
+      "正在检查 Qwen/Qwen3-ASR-1.7B-hf，缺少文件时下载，完成后本地复用。",
+      "正在检查 Qwen/Qwen3-ForcedAligner-0.6B-hf，缺少文件时下载，完成后本地复用。"
+    ]
+  }
+}

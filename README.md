@@ -4,19 +4,19 @@
 
 ## 软件界面预览
 
-Windows v1.0.7 当前构建运行截图，主窗口 1600×1000。
+Windows v1.0.8 当前构建运行截图，主窗口 1600×1000。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.7.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.8.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.7.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.8.png)
 
-## v1.0.7 更新
+## v1.0.8 更新
 
-- 模式菜单选中行改为浅灰底与左侧细色条，移除整圈描边。
-- 队列表头灰底贴齐顶部和两侧，保留圆角。
-- 语言、模式和定位控件默认透明，选中时不再叠加两层背景。
-- 统一当前开发合同、产品版本和模型显示来源，完善打包检查与启动器错误反馈。
-- 保留精简安装包及按需安装的本地模型运行环境。
+- 修复 Windows PowerShell 5 下中文运行环境校验引号丢失的问题。
+- 环境校验改为临时 Python 文件执行，失败或成功后均自动清理。
+- 支持仅校验已有环境，避免修复时重复安装依赖。
+- 列表内容统一为单行，长文件名和路径显示省略号，悬停查看全文。
+- 继续保留精简安装包和按需安装的本地模型运行环境。
 
 ## 功能
 
@@ -37,7 +37,7 @@ Windows v1.0.7 当前构建运行截图，主窗口 1600×1000。
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.7-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
+从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.8-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 
