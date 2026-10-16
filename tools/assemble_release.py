@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 from tempfile import TemporaryDirectory
+import time
 
 
 def api(path, method="GET"):
@@ -33,6 +34,9 @@ def main():
     assets = {item["name"]: item for item in api(endpoint + "/assets?per_page=100")}
     assert set(assets) <= part_names | {name}, "Unexpected draft asset; refusing publication"
     digest = "sha256:" + expected_hash
+    if name in assets and assets[name]["state"] == "starter":
+        api(f"repos/{repo}/releases/assets/{assets[name]['id']}", "DELETE")
+        del assets[name]
     if name not in assets:
         assert part_names <= set(assets), "Transport parts are incomplete"
         with TemporaryDirectory(prefix="nanfeng-release-") as directory:
@@ -50,7 +54,11 @@ def main():
                     checksum.update(data)
             assert target.stat().st_size == expected_size and checksum.hexdigest() == expected_hash
             subprocess.run(["gh", "release", "upload", tag, str(target), "--repo", repo], check=True)
-        assets = {item["name"]: item for item in api(endpoint + "/assets?per_page=100")}
+        for attempt in range(20):
+            assets = {item["name"]: item for item in api(endpoint + "/assets?per_page=100")}
+            if name in assets and assets[name]["state"] == "uploaded" and assets[name]["digest"]:
+                break
+            time.sleep(3)
     full = assets[name]
     assert full["state"] == "uploaded" and full["size"] == expected_size and full["digest"] == digest
     for part_name in sorted(part_names & set(assets)):
