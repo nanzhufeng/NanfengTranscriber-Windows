@@ -196,6 +196,48 @@ class DocumentEditor(QTextEdit):
         self.document().setModified(False)
 
 
+class SubtitleList(QListWidget):
+    """Follow the active cue, while giving manual scrolling a quiet interval."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.manual_scroll = False
+        self.resume_follow = QTimer(self)
+        self.resume_follow.setSingleShot(True)
+        self.resume_follow.setInterval(4000)
+        self.resume_follow.timeout.connect(self.follow_current)
+        bar = self.verticalScrollBar()
+        bar.sliderPressed.connect(self.pause_follow)
+        bar.sliderReleased.connect(self.pause_follow)
+        bar.actionTriggered.connect(self.pause_follow)
+        self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+
+    def pause_follow(self, *_):
+        self.manual_scroll = True
+        self.resume_follow.start()
+
+    def follow_current(self):
+        if self.verticalScrollBar().isSliderDown():
+            self.resume_follow.start()
+            return
+        self.manual_scroll = False
+        if self.currentIndex().isValid():
+            self.scrollTo(self.currentIndex())
+
+    def wheelEvent(self, event):
+        self.pause_follow()
+        super().wheelEvent(event)
+
+    def scrollTo(self, index, hint=QListWidget.PositionAtCenter):
+        if not self.manual_scroll:
+            super().scrollTo(index, QListWidget.PositionAtCenter)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self.manual_scroll:
+            QTimer.singleShot(0, self.follow_current)
+
+
 class HistoryPage(QWidget):
     back_requested = Signal()
 
@@ -226,7 +268,7 @@ class HistoryPage(QWidget):
             QPushButton#HistorySelection { background: transparent; border: none; border-radius: 14px; padding: 0; min-width: 28px; max-width: 28px; min-height: 28px; max-height: 28px; }
             QPushButton#HistorySelection:hover, QPushButton#HistorySelection:focus { background: #e5e7eb; }
             QPushButton#HistorySelection:pressed { background: #d7dbe2; }
-            QFrame#HistoryDetailHeader { background: #ffffff; border: none; border-radius: 14px; }
+            QFrame#HistoryDetailHeader { background: transparent; border: none; }
             QLabel#HistoryDocumentTitle { color: #182430; font-size: 18px; font-weight: 600; background: transparent; }
             QLabel#HistoryDetailFeedback { color: #5269ac; font-size: 12px; padding: 0 4px; }
             QTextEdit, QListWidget { background: #ffffff; border: none; border-radius: 12px; padding: 12px; color: #1f2937; }
@@ -370,7 +412,7 @@ class HistoryPage(QWidget):
         top = QHBoxLayout(header)
         top.setContentsMargins(14, 14, 14, 14)
         top.setSpacing(14)
-        top.addWidget(back_button("返回历史", self.show_list))
+        top.addWidget(button("原文件核对", lambda: self.open_media(self.current_record["id"])))
         heading = QVBoxLayout()
         heading.setSpacing(6)
         self.detail_title = ElidedLabel()
@@ -380,7 +422,6 @@ class HistoryPage(QWidget):
         self.detail_meta.setObjectName("HistoryMeta")
         heading.addWidget(self.detail_meta)
         top.addLayout(heading, 1)
-        top.addWidget(button("原文件核对", lambda: self.open_media(self.current_record["id"])))
         self.detail_more = QPushButton()
         self.detail_more.setObjectName("HistoryMore")
         self.detail_more.setFixedSize(36, 36)
@@ -389,6 +430,14 @@ class HistoryPage(QWidget):
         self.detail_more.setAccessibleName("文稿更多操作")
         self.detail_more.clicked.connect(lambda: self.menu(self.current_record, self.detail_more, detail=True))
         top.addWidget(self.detail_more)
+        self.detail_close = QPushButton()
+        self.detail_close.setObjectName("HistoryMore")
+        self.detail_close.setFixedSize(36, 36)
+        self.detail_close.setIcon(icon("x", "#667782", 20))
+        self.detail_close.setToolTip("关闭文稿，返回历史")
+        self.detail_close.setAccessibleName("关闭当前文稿")
+        self.detail_close.clicked.connect(self.show_list)
+        top.addWidget(self.detail_close)
         layout.addWidget(header)
         self.detail_feedback = ElidedLabel()
         self.detail_feedback.setObjectName("HistoryDetailFeedback")
@@ -402,7 +451,7 @@ class HistoryPage(QWidget):
         from .main import CenterComboBox
         self.format = CenterComboBox()
         self.format.setObjectName("HistoryExportFormat")
-        self.format.addItems(["TXT", "Markdown", "SRT", "DOCX"])
+        self.format.addItems(["TXT", "MD", "SRT", "DOCX"])
         for index in range(self.format.count()):
             self.format.setItemData(index, Qt.AlignCenter, Qt.TextAlignmentRole)
         actions.addStretch()
@@ -415,14 +464,15 @@ class HistoryPage(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         actions = QHBoxLayout()
-        actions.addWidget(back_button("返回历史", self.show_list))
         actions.addStretch()
         actions.addWidget(button("定位原文件", lambda: self.run_action(lambda: self.reveal(Path(self.media_record["source"])))))
-        layout.addLayout(actions)
         split = QSplitter()
+        split.setHandleWidth(8)
+        split.setStyleSheet("QSplitter::handle { background: transparent; border: none; }")
         video_side = QWidget()
         video_layout = QVBoxLayout(video_side)
         video_layout.setContentsMargins(0, 0, 0, 0)
+        video_layout.addLayout(actions)
         self.media_view = MediaPlayer(self.store.root / "playback.ini", video_side)
         self.media_view.close_requested.connect(self.show_list)
         video_layout.addWidget(self.media_view)
@@ -431,11 +481,26 @@ class HistoryPage(QWidget):
         self.subtitle, self.seek = self.media_view.subtitle, self.media_view.seek
         self.play_button, self.play_clock = self.media_view.play_button, self.media_view.play_clock
         self.audio_placeholder = self.media_view.audio_placeholder
-        self.cues = QListWidget()
+        self.cues = SubtitleList()
         self.cues.setObjectName("HistoryCues")
         self.cues.itemClicked.connect(self.seek_to_cue)
+        cues_side = QWidget()
+        cues_layout = QVBoxLayout(cues_side)
+        cues_layout.setContentsMargins(0, 0, 0, 0)
+        close_row = QHBoxLayout()
+        close_row.addStretch()
+        self.media_close = QPushButton()
+        self.media_close.setObjectName("HistoryMore")
+        self.media_close.setFixedSize(38, 38)
+        self.media_close.setIcon(icon("x", "#667782", 20))
+        self.media_close.setToolTip("关闭播放，返回历史")
+        self.media_close.setAccessibleName("关闭当前播放页面")
+        self.media_close.clicked.connect(self.show_list)
+        close_row.addWidget(self.media_close)
+        cues_layout.addLayout(close_row)
+        cues_layout.addWidget(self.cues, 1)
         split.addWidget(video_side)
-        split.addWidget(self.cues)
+        split.addWidget(cues_side)
         split.setSizes([600, 400])
         layout.addWidget(split, 1)
         self.media_status = QLabel()
@@ -773,7 +838,7 @@ class HistoryPage(QWidget):
 
     def export(self):
         record = self.current_record
-        suffix = {"TXT": ".txt", "Markdown": ".md", "SRT": ".srt", "DOCX": ".docx"}[self.format.currentText()]
+        suffix = {"TXT": ".txt", "MD": ".md", "SRT": ".srt", "DOCX": ".docx"}[self.format.currentText()]
         target, _ = QFileDialog.getSaveFileName(self, "导出历史文稿", str(Path.home() / (safe_output_stem(Path(record["name"]).stem) + suffix)), f"{self.format.currentText()} (*{suffix})")
         if not target:
             return
@@ -826,6 +891,8 @@ class HistoryPage(QWidget):
             is_audio = source.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".opus"}
             self.media_title.setText(record["name"])
             self.cues.clear()
+            self.cues.resume_follow.stop()
+            self.cues.manual_scroll = False
             for cue in self.media_record["segments"]:
                 self.cues.addItem(f"{clock(cue['start'])} — {clock(cue['end'])}  {cue['text']}")
                 self.cues.item(self.cues.count() - 1).setData(Qt.UserRole, cue["start"])

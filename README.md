@@ -4,23 +4,23 @@
 
 ## 软件界面预览
 
-Windows v1.0.9 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
+Windows v1.0.10 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.9.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.10.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.9.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.10.png)
 
-![南枫转写 Windows 历史](docs/history-v1.0.9.png)
+![南枫转写 Windows 历史](docs/history-v1.0.10.png)
 
-![南枫转写 Windows 播放核对](docs/player-v1.0.9.png)
+![南枫转写 Windows 播放核对](docs/player-v1.0.10.png)
 
-## v1.0.9 更新
+## v1.0.10 更新
 
-- 新增本地转写历史，支持全文搜索、编辑、再次导出与批量删除。
-- 新增画面内播放器，支持字幕单击定位、进度拖动、音量、倍速、全屏与续播。
-- 精简历史卡片与文稿排版，统一选中、按钮、图标和工作台底色。
-- 优化队列表头、操作栏布局、总进度条和设置页面。
-- 保持精简安装包，复用已有模型和独立运行环境。
+- 优化播放器按钮响应，后台保存续播与音量，合并进度拖动请求。
+- 双击画面左侧后退、中间播放/暂停、右侧快进，沿用同侧连续跳转。
+- 当前字幕自动居中，手动滚动后延迟恢复跟随；画面字幕位置固定。
+- 播放器采用平滑圆角、橙色强调和透明背景的柔和文字阴影。
+- 精简文稿顶部与关闭入口，导出格式名称统一为 MD。
 
 ## 功能
 
@@ -44,7 +44,7 @@ Windows v1.0.9 实际运行截图，主窗口 1600×1000；历史与播放器使
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.9-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
+从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.10-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 

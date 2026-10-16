@@ -368,3 +368,26 @@ class HistoryUiTests(unittest.TestCase):
         ordinary = page.cues.visualItemRect(page.cues.item(1)).translated(offset)
         self.assertEqual(image.pixelColor(selected.right()-10, selected.center().y()), QColor("#fff0df"))
         self.assertEqual(image.pixelColor(ordinary.right()-10, ordinary.center().y()), QColor("#ffffff"))
+
+    def test_active_subtitle_centers_and_manual_scroll_temporarily_holds_position(self):
+        from PySide6.QtWidgets import QAbstractSlider
+        from app.history_ui import SubtitleList
+        cues = SubtitleList()
+        self.addCleanup(cues.close)
+        cues.resize(500, 400)
+        cues.addItems([f"Subtitle {i}" for i in range(100)])
+        cues.show()
+        self.app.processEvents()
+        cues.setCurrentRow(50)
+        self.app.processEvents()
+        self.assertLess(abs(cues.visualItemRect(cues.currentItem()).center().y() - cues.viewport().rect().center().y()), 3)
+        bar = cues.verticalScrollBar()
+        bar.triggerAction(QAbstractSlider.SliderPageStepSub)
+        self.app.processEvents()
+        position = bar.value()
+        cues.setCurrentRow(55)
+        self.app.processEvents()
+        self.assertEqual(bar.value(), position)
+        cues.resume_follow.timeout.emit()
+        self.app.processEvents()
+        self.assertLess(abs(cues.visualItemRect(cues.currentItem()).center().y() - cues.viewport().rect().center().y()), 3)
