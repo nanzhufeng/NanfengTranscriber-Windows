@@ -3,7 +3,7 @@
 ## Verified
 - Last verified: 2026-10-16 +08:00
 - Branch: main
-- Status: VERIFIED — v1.0.9 Windows artifact.
+- Status: VERIFIED — v1.0.9 Windows formal release.
 - Scope: 本地转写历史、画面内播放器与本轮界面整理。
 
 ## Current
@@ -30,7 +30,7 @@
 - 用户设置、媒体、外部导出、模型和凭据未提交；`docs/ui-design-baseline.md` 为既有其他任务文件，保留不纳入本次发布。
 
 ## Release
-- [v1.0.9 下载与版本说明](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.9)，远端发布状态以 GitHub 元数据为准。
+- [v1.0.9 下载与版本说明](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.9)，正式发布已核对（draft=false、prerelease=false）；仅一个 EXE，167087862 字节及 SHA-256 与本地一致，标签指向应用源码 `d18b100b4598e5a79e6952509f0ad362a23366db`。
 
 ## Next
-- 发布完成后保留本次收据与轻量证据；下一功能改动重新核对合同与状态，不扩大已有验收结论。
+- 保留本次收据与轻量证据；下一功能改动重新核对合同与状态，不扩大已有验收结论。

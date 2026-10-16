@@ -37,5 +37,10 @@
   "limitations": [
     "QA installer used a dedicated AppId; production AppId upgrade was not run on user installation",
     "User media accuracy, external text API and all codecs not verified"
-  ]
+  ],
+  "sourceCommit": "d18b100b4598e5a79e6952509f0ad362a23366db",
+  "releaseUrl": "https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.9",
+  "remoteDigestVerified": "sha256:c8429bd3357b843a272a03dea121845eed6bbf53dbbd6f84f8d33dbed1505e16",
+  "remoteAssetCount": 1,
+  "publishedAt": "2026-10-16T08:31:26Z"
 }
