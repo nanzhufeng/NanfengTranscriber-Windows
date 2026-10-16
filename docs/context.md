@@ -7,6 +7,9 @@
 | 产品名、版本、开发时间、仓库 | `app/assets/product.json` | `app/product_info.py`、关于窗口、Inno 构建 |
 | 两种转写模式、模型显示与旧值兼容 | `app/model_modes.py` | 主模式输入框、队列、转写会话 |
 | 队列、QSettings、窗口与完成反馈 | `app/main.py` | 文件/文件夹/拖放、开始/停止、设置 |
+| 本地历史快照、筛选、编辑与删除边界 | `app/history.py` | 完成事件、历史页面；SQLite v1 |
+| 嵌入播放器、全屏、续播与画面内控件 | `app/media_player.py` | 历史核对页；复用 Qt Multimedia，不新增运行时 |
+| 历史日期卡片、详情、重新导出与媒体核对 | `app/history_ui.py` | 侧栏历史入口、右侧页面栈 |
 | 单文件转写用例、输出命名、GPU 探测、字幕 | `app/transcriber.py` | Worker、已有结果检查、开发 QA CLI |
 | 独立进程与本地 JSON 协议 | `app/qwen_bridge.py` | Qwen 识别、快速模式精确对齐 |
 | Qwen 模型加载、识别与对齐 | `app/qwen_worker.py` | 独立 Python stdin/stdout；不依赖 Qt |

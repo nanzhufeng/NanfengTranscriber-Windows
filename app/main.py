@@ -20,7 +20,7 @@ except ImportError:  # macOS 迁移时保留 Qt 的系统提示音回退。
     winsound = None
 
 from PySide6.QtCore import QEvent, QObject, QRect, QRectF, QSize, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap, QRegion
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QStylePainter,
     QTableWidget,
     QTableWidgetItem,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -396,8 +397,6 @@ class AppSettingsDialog(QDialog):
             "QPushButton#SettingsSave:hover, QPushButton#SettingsSave:focus { background: #5065b5; }"
             "QPushButton#SettingsClose { border: none; background: transparent; border-radius: 16px; padding: 0; }"
             "QPushButton#SettingsClose:hover { background: #eef0f2; }"
-            "QPushButton#SettingsReview { text-align: left; border: none; border-radius: 10px; background: #f1f3f5; padding: 0 16px; }"
-            "QPushButton#SettingsReview:hover { background: #e8ebef; }"
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -508,24 +507,6 @@ class AppSettingsDialog(QDialog):
         lower.addWidget(subtitles, 1)
         lower.addWidget(completion, 1)
         body.addLayout(lower)
-        self.review_button = QPushButton("功能审阅")
-        self.review_button.setObjectName("SettingsReview")
-        self.review_button.setIcon(parent._configuration_icon("list", "#405362"))
-        self.review_button.setCheckable(True)
-        self.review_button.setFixedHeight(46)
-        review_row = QHBoxLayout(self.review_button)
-        review_row.setContentsMargins(0, 0, 16, 0)
-        review_row.addStretch()
-        self.review_arrow = QLabel()
-        self.review_arrow.setPixmap(parent._configuration_icon("chevron-down", "#405362").pixmap(18, 18))
-        self.review_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
-        review_row.addWidget(self.review_arrow)
-        body.addWidget(self.review_button)
-        self.review_details = hint(body, "保留：保存位置、子文件夹、字幕对齐与完成提醒均为可选设置，减少主界面常驻按键。\n入口：转写模式和导出格式保留在主界面；真实模型名仅在展开列表后显示。\n理由：两套识别模型覆盖精度与速度需求，固定对齐器按需调用。")
-        self.review_details.hide()
-        self.review_button.toggled.connect(self.review_details.setVisible)
-        self.review_button.toggled.connect(lambda opened: self.review_arrow.setPixmap(parent._configuration_icon("chevron-up" if opened else "chevron-down", "#405362").pixmap(18, 18)))
-
         buttons = QHBoxLayout()
         about_button = QPushButton("关于南枫转写")
         about_button.setObjectName("SettingsCancel")
@@ -545,7 +526,7 @@ class AppSettingsDialog(QDialog):
         buttons.addWidget(cancel_button)
         buttons.addWidget(save_button)
         layout.addLayout(buttons)
-        self.resize(700, min(730, QApplication.primaryScreen().availableGeometry().height() - 48))
+        self.resize(700, min(670, QApplication.primaryScreen().availableGeometry().height() - 48))
 
     def eventFilter(self, watched, event):
         if watched is getattr(self, "_title_widget", None) and event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
@@ -669,6 +650,42 @@ class ModeItemDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(surface.left() + 2, surface.center().y() - 10, 2, 20, 1, 1)
         draw_mode_lines(painter, option.rect.adjusted(8, 4, -8, -4), index.data(), index.data(Qt.UserRole), selected)
         painter.restore()
+
+
+class QueuePanel(QWidget):
+    """Own the queue silhouette and the continuous header background."""
+
+    RADIUS = 16
+
+    def __init__(self, table):
+        super().__init__()
+        self.table = table
+        self.header = table.horizontalHeader()
+        self.setObjectName("QueuePanel")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(table)
+        table.installEventFilter(self)
+        self.header.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if watched is self.table and event.type() == QEvent.Resize:
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(self.table.rect()), self.RADIUS, self.RADIUS)
+            self.table.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        if watched is self.header and event.type() == QEvent.Resize:
+            self.update()
+        return super().eventFilter(watched, event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        outline = QPainterPath()
+        outline.addRoundedRect(QRectF(self.rect()), self.RADIUS, self.RADIUS)
+        painter.setClipPath(outline)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+        painter.fillRect(0, 0, self.width(), self.header.height(), QColor("#f4f4f4"))
 
 
 class FormatChoice(QCheckBox):
@@ -840,6 +857,11 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: QSettings | None = None) -> None:
         super().__init__()
         self.settings = settings if settings is not None else QSettings("Nanzhufeng", "NanfengTranscriber")
+        from .history import HistoryStore
+        history_root = (Path(self.settings.fileName()).parent / "history") if settings is not None else Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NanfengTranscriber" / "history"
+        self.history_store = HistoryStore(history_root)
+        self.history_page = None
+        self.pending_history_results = {}
         self.project_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
         self.ffmpeg_dir = find_ffmpeg_dir(self.project_root)
         self.runtime_log_path = self.project_root / "runtime-log.txt"
@@ -954,6 +976,11 @@ class MainWindow(QMainWindow):
         self.settings.sync()
 
     def closeEvent(self, event) -> None:
+        if self.history_page is not None and not self.history_page.leave():
+            event.ignore()
+            return
+        if self.history_page is not None:
+            self.history_page.shutdown()
         self._save_settings()
         super().closeEvent(event)
 
@@ -1070,24 +1097,33 @@ class MainWindow(QMainWindow):
         separator()
 
         self.open_folder_button = QPushButton("打开输出目录")
-        self.open_folder_button.setObjectName("SideButton")
+        self.open_folder_button.setObjectName("PrimaryButton")
         self.open_folder_button.setIcon(self._configuration_icon("folder", "#ffffff"))
-        self.open_folder_button.setFixedHeight(40)
+        self.open_folder_button.setFixedHeight(38)
         self.open_folder_button.clicked.connect(self._open_output_dir)
         self.settings_button = QPushButton("设置")
         self.settings_button.setObjectName("SideSettingsButton")
         self.settings_button.setIcon(self._configuration_icon("settings", "#405362"))
         self.settings_button.setFixedHeight(40)
         self.settings_button.clicked.connect(self._open_settings)
+        self.history_button = QPushButton("历史")
+        self.history_button.setObjectName("SideSettingsButton")
+        self.history_button.setCheckable(True)
+        self.history_button.setFixedHeight(40)
+        self.history_button.setIcon(self._configuration_icon("history", "#5269ac"))
+        self.history_button.clicked.connect(self._show_history)
+        sidebar_layout.addWidget(self.history_button)
         sidebar_layout.addWidget(self.settings_button)
-        sidebar_layout.addWidget(self.open_folder_button)
         shell.addWidget(sidebar)
 
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
-        shell.addWidget(content, 1)
+        self.workbench_page = content
+        self.right_stack = QStackedWidget()
+        self.right_stack.addWidget(content)
+        shell.addWidget(self.right_stack, 1)
 
         input_frame = QFrame()
         input_frame.setObjectName("ConfigurationPanel")
@@ -1267,9 +1303,12 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.select_all_button)
         action_layout.addWidget(self.invert_button)
         action_layout.addStretch(1)
+        action_layout.addWidget(self.open_folder_button)
         layout.addWidget(action_frame)
 
         self.table = QTableWidget(0, 12)
+        self.table.setObjectName("QueueTable")
+        self.table.viewport().setObjectName("QueueViewport")
         self.table.setHorizontalHeaderLabels(["序号", "选择", "状态", "文件名", "时长", "语言", "转写模式", "进度", "耗时", "剩余", "输出路径", "定位"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -1298,12 +1337,7 @@ class MainWindow(QMainWindow):
             self.table.setColumnWidth(column, width)
         header.setSectionResizeMode(COL_FILE, QHeaderView.Stretch)
         header.setSectionResizeMode(COL_OUTPUT, QHeaderView.Stretch)
-        queue_panel = QFrame()
-        queue_panel.setObjectName("QueuePanel")
-        queue_layout = QVBoxLayout(queue_panel)
-        queue_layout.setContentsMargins(0, 0, 0, 0)
-        queue_layout.setSpacing(0)
-        queue_layout.addWidget(self.table)
+        queue_panel = QueuePanel(self.table)
         layout.addWidget(queue_panel, 1)
 
         bottom = QHBoxLayout()
@@ -1328,6 +1362,32 @@ class MainWindow(QMainWindow):
         bottom.addWidget(self.main_progress)
         layout.addLayout(bottom)
 
+    def _show_history(self) -> None:
+        from .history_ui import HistoryPage
+        if self.history_page is None:
+            self.history_page = HistoryPage(self.history_store, self._reveal_path, self.ffmpeg_dir, self)
+            self.history_page.back_requested.connect(self._show_workbench)
+            self.right_stack.addWidget(self.history_page)
+        for result in list(self.pending_history_results.values()):
+            try:
+                self.history_store.save(result)
+                self.pending_history_results.pop(result.history_id, None)
+            except Exception:
+                break
+        if self.pending_history_results:
+            self.history_page.show_error("部分已完成任务的历史保存失败，转写导出文件仍保留。请检查历史目录权限；再次打开历史会重试保存。")
+        else:
+            self.history_button.setText("历史")
+            self.history_page.error_label.hide()
+        self.history_page.show_list()
+        self.right_stack.setCurrentWidget(self.history_page)
+        self.history_page.work_status.setText("后台正在转写，可返回查看进度" if self.worker_thread is not None and self.worker_thread.isRunning() else "")
+        self.history_button.setChecked(True)
+
+    def _show_workbench(self) -> None:
+        self.right_stack.setCurrentWidget(self.workbench_page)
+        self.history_button.setChecked(False)
+
     def _apply_style(self) -> None:
         QApplication.instance().setFont(QFont("Microsoft YaHei UI", 10))
         chevron_icon = self._asset_path("chevron-down.svg")
@@ -1349,7 +1409,6 @@ class MainWindow(QMainWindow):
             QLabel#WorkflowNumber { background: #eeeeee; color: #374151; border-radius: 15px; font-size: 13px; font-weight: 600; }
             QLabel#WorkflowLabel { color: #293c49; font-size: 14px; }
             QFrame#WorkflowConnector { background: #e5e5e5; border: none; }
-            QFrame#QueuePanel { background: #ffffff; border: none; border-radius: 16px; }
             QFrame#Panel, QFrame#ActionPanel { background: #ffffff; border: none; border-radius: 12px; }
             QLabel#BrandMark { background: #eeeeee; color: #374151; border: none; border-radius: 12px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; qproperty-alignment: AlignCenter; font-size: 25px; font-weight: 700; }
             QLabel#BrandTitle { color: #102027; font-size: 20px; font-weight: 700; }
@@ -1447,11 +1506,12 @@ class MainWindow(QMainWindow):
             QPushButton#LocateButton { min-width: 32px; max-width: 32px; min-height: 28px; max-height: 28px; padding: 0; background: transparent; border: none; border-radius: 14px; }
             QPushButton#LocateButton:hover, QPushButton#LocateButton:focus, QPushButton#LocateButton:pressed { background: transparent; }
             QTableWidget { background: #ffffff; alternate-background-color: #fafafa; border: none; border-radius: 12px; gridline-color: #ffffff; selection-background-color: #e5e7eb; selection-color: #1f2937; }
-            QHeaderView::section { background: #f4f4f4; color: #374151; padding: 10px 8px; border: none; font-weight: 600; }
-            QHeaderView::section:horizontal:first { border-top-left-radius: 16px; }
-            QHeaderView::section:horizontal:last { border-top-right-radius: 16px; }
+            QTableWidget#QueueTable { background: transparent; border-radius: 0px; }
+            QWidget#QueueViewport { background: #ffffff; }
+            QHeaderView { background: transparent; }
+            QHeaderView::section { background: transparent; color: #374151; padding: 10px 8px; border: none; border-radius: 0px; font-weight: 600; }
             QProgressBar { background: #e3e3e3; border: none; border-radius: 6px; height: 16px; text-align: center; color: #374151; }
-            QProgressBar::chunk { background: #9ca3af; border-radius: 5px; }
+            QProgressBar::chunk { background: #6075c8; border-radius: 5px; }
             QCheckBox { color: #29434b; font-weight: 700; }
             """
         )
@@ -2201,6 +2261,8 @@ class MainWindow(QMainWindow):
 
     @Slot(int, dict)
     def _on_item_progress(self, row: int, info: dict[str, Any]) -> None:
+        if self.history_page is not None:
+            self.history_page.work_status.setText(f"后台转写 · 第 {row + 1} 项 · {info.get('progress', 0)}%")
         status = info.get("status")
         if status == "extracting":
             self._set_status_cell(row, "提取音频")
@@ -2233,6 +2295,15 @@ class MainWindow(QMainWindow):
 
     @Slot(int, object)
     def _on_item_finished(self, row: int, result: TranscribeResult) -> None:
+        if result.source_path is not None:
+            try:
+                self.history_store.save(result)
+                if self.history_page is not None and self.history_page.stack.currentIndex() == 0:
+                    self.history_page.reload()
+            except Exception as exc:
+                self.pending_history_results[result.history_id] = result
+                self.history_button.setText("历史 · 保存失败")
+                self.history_button.setToolTip(f"转写已完成且导出文件保留；历史未保存：{exc}。点击历史重试。")
         self._set_status_cell(row, "完成")
         self._set_cell(row, COL_PROGRESS, "100%")
         if result.files:
@@ -2269,6 +2340,8 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_all_done(self) -> None:
+        if self.history_page is not None:
+            self.history_page.work_status.setText("本批任务已结束")
         self._debug_log("all done")
         self.status_label.setText("转写任务已结束。")
         rows = sorted(self.active_rows)
@@ -2402,6 +2475,13 @@ def main() -> int:
             app.processEvents()
             dialog.grab().save(str(target / "settings.png"))
             dialog.close()
+            if "--qa-history-source" in sys.argv:
+                from .qa_history_preview import capture_history
+                source = sys.argv[sys.argv.index("--qa-history-source") + 1]
+                capture_history(window, target, source, finish)
+                return
+            finish()
+        def finish():
             window.close()
             app.quit()
         QTimer.singleShot(600, capture)

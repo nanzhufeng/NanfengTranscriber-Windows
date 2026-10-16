@@ -104,6 +104,7 @@ try {
         "/DMyOutputDir=$outputDir" `
         "/DMyOutputBaseFilename=$outputBaseName" `
         "/DMyAppVersion=$Version" `
+        "/DMyChineseLanguageFile=$(Join-Path $projectDir 'installer/ChineseSimplified.isl')" `
         "/DMySetupIconFile=$iconPath" `
         $issCompilePath
 }

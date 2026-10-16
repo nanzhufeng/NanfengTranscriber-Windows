@@ -1,0 +1,41 @@
+{
+  "version": "1.0.9",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.9-Setup.exe",
+  "bytes": 167087862,
+  "sha256": "c8429bd3357b843a272a03dea121845eed6bbf53dbbd6f84f8d33dbed1505e16",
+  "authenticode": "NotSigned",
+  "automatedTests": 92,
+  "releaseContractChecks": 23,
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "payloadFilesVerified": 844,
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use",
+  "packagedPowerShell5Verification": "PASS - existing user runtime CUDA True",
+  "offlineTranscription": {
+    "success": true,
+    "mode": "中文精确",
+    "characters": 45,
+    "exports": [
+      "speech.txt",
+      "speech.srt"
+    ],
+    "notices": [
+      "正在检查 Qwen/Qwen3-ASR-1.7B-hf，缺少文件时下载，完成后本地复用。",
+      "正在检查 Qwen/Qwen3-ForcedAligner-0.6B-hf，缺少文件时下载，完成后本地复用。"
+    ]
+  },
+  "installedMediaPlayback": {
+    "videoFrameValid": true,
+    "position": 1486,
+    "duration": 12027,
+    "error": "",
+    "subtitle": "这是一段受控演示视频",
+    "historyCount": 1
+  },
+  "installerLanguage": "Simplified Chinese",
+  "limitations": [
+    "QA installer used a dedicated AppId; production AppId upgrade was not run on user installation",
+    "User media accuracy, external text API and all codecs not verified"
+  ]
+}

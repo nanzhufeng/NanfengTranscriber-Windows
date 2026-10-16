@@ -93,7 +93,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertTrue(all(not label.text().startswith(("真实模型：", "中文精确：", "也可以把视频")) for label in window.findChildren(main.QLabel)))
             window.close()
 
-    def test_settings_destination_is_exclusive_and_review_can_toggle(self):
+    def test_settings_destination_is_exclusive_and_review_is_absent(self):
         from PySide6.QtTest import QTest
         from PySide6.QtCore import Qt
         with TemporaryDirectory() as temp_dir:
@@ -108,11 +108,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertFalse(dialog.software_path_radio.isChecked())
             QTest.mouseClick(dialog.software_path_radio, Qt.LeftButton)
             self.assertFalse(dialog.values()["save_beside_video"])
-            self.assertTrue(dialog.review_details.isHidden())
-            QTest.mouseClick(dialog.review_button, Qt.LeftButton)
-            self.assertFalse(dialog.review_details.isHidden())
-            QTest.mouseClick(dialog.review_button, Qt.LeftButton)
-            self.assertTrue(dialog.review_details.isHidden())
+            self.assertNotIn("功能审阅", [button.text() for button in dialog.findChildren(main.QPushButton)])
             QTest.mouseClick(dialog.completion_sound_check, Qt.LeftButton)
             self.assertFalse(dialog.values()["completion_sound"])
             dialog.reject()
@@ -155,9 +151,42 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 combo.hidePopup()
             window.close()
 
-    def test_long_queue_text_stays_on_one_line_with_full_tooltip(self):
+    def test_queue_header_fills_shared_outline_including_scrollbar_gap(self):
+        from PySide6.QtWidgets import QHeaderView
+
         with TemporaryDirectory() as temp_dir:
             window = main.MainWindow(settings=QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
+            self.addCleanup(window.close)
+            window.show()
+            self.app.processEvents()
+            panel = window.table.parentWidget()
+            for width, rows in ((1600, 0), (1800, 100), (1600, 1)):
+                window.resize(width, 1000)
+                window.table.setRowCount(rows)
+                self.app.processEvents()
+                image = panel.grab().toImage()
+                gray = main.QColor("#f4f4f4")
+                # A row above all text crosses every section boundary and the
+                # unused area above a visible vertical scrollbar.
+                for x in range(18, image.width() - 18):
+                    self.assertEqual(image.pixelColor(x, 2), gray, f"Header white seam at {x}, rows={rows}")
+                for point in ((0, 0), (image.width() - 1, 0), (0, image.height() - 1)):
+                    self.assertEqual(image.pixelColor(*point), panel.palette().color(panel.backgroundRole()), "The shared silhouette must reveal the outer background at corners")
+            header = window.table.horizontalHeader()
+            for column in range(window.table.columnCount()):
+                header.setSectionResizeMode(column, QHeaderView.Fixed)
+                window.table.setColumnWidth(column, 50)
+            self.app.processEvents()
+            image = panel.grab().toImage()
+            self.assertEqual(image.pixelColor(image.width() - 25, 15), gray, "Unused header space must share the same surface")
+            window.close()
+
+    def test_long_queue_text_stays_on_one_line_with_full_tooltip(self):
+        from PySide6.QtCore import QPoint
+
+        with TemporaryDirectory() as temp_dir:
+            window = main.MainWindow(settings=QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
+            self.addCleanup(window.close)
             window.table.setRowCount(1)
             window.table.setRowHeight(0, 48)
             text = "长文件名与完整输出路径" * 30
@@ -165,11 +194,13 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 window._set_cell(0, column, text)
             window.show()
             self.app.processEvents()
-            image = window.table.viewport().grab().toImage()
+            panel = window.table.parentWidget()
+            image = panel.grab().toImage()
+            offset = window.table.viewport().mapTo(panel, QPoint(0, 0))
             for column in (main.COL_FILE, main.COL_OUTPUT):
                 item = window.table.item(0, column)
                 self.assertEqual(item.toolTip(), text)
-                rect = window.table.visualItemRect(item)
+                rect = window.table.visualItemRect(item).translated(offset)
                 ink_rows = [y for y in range(rect.top() + 2, rect.bottom() - 1)
                             if any(image.pixelColor(x, y).lightness() < 140
                                    for x in range(rect.left() + 8, rect.right() - 8))]

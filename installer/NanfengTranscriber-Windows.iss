@@ -10,6 +10,9 @@
 #ifndef MyAppVersion
   #error MyAppVersion is required
 #endif
+#ifndef MyChineseLanguageFile
+  #error MyChineseLanguageFile is required
+#endif
 #ifndef MySetupIconFile
   #define MySetupIconFile "..\app\assets\nanfeng-transcriber-icon.ico"
 #endif
@@ -42,13 +45,18 @@ CloseApplications=yes
 RestartApplications=no
 UsePreviousAppDir=yes
 UsePreviousGroup=yes
-UsePreviousTasks=yes
+UsePreviousTasks=no
+ShowLanguageDialog=no
+UsePreviousLanguage=no
 VersionInfoVersion={#MyAppVersion}
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription={#MyAppName} Windows 安装程序
 
+[Languages]
+Name: "chinesesimp"; MessagesFile: "{#MyChineseLanguageFile}"
+
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: checkedonce
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："
 
 [Files]
 Source: "{#MyAppSourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

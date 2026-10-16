@@ -10,7 +10,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4
 from pathlib import Path
 from typing import Any, Callable
 
@@ -74,6 +75,14 @@ class TranscribeOptions:
 class TranscribeResult:
     files: list[Path]
     text: str
+    segments: list[dict[str, Any]] = field(default_factory=list)
+    original_text: str = ""
+    source_path: Path | None = None
+    mode: str = ""
+    model: str = ""
+    language: str = ""
+    duration: float = 0
+    history_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 def resolve_output_directory(source: Path, options: TranscribeOptions) -> Path:
@@ -896,4 +905,36 @@ def transcribe_file(
         files.append(docx_path)
 
     progress_callback({"status": "finished", "progress": 100, "eta": "0秒"})
-    return TranscribeResult(files=files, text=final_text)
+    from .model_modes import MODE_MODEL_LABELS
+    return TranscribeResult(files=files, text=final_text, segments=segments,
+                            original_text=plain_text, source_path=source.resolve(),
+                            mode=options.model_size, model=MODE_MODEL_LABELS.get(options.model_size, options.model_size),
+                            language=options.language, duration=duration)
+
+
+def history_subtitle_cues(segments: list[dict]) -> list[dict]:
+    """Use the same timed cue boundaries for history playback and SRT export."""
+    return _subtitle_cues(segments)
+
+
+def export_history_document(target: Path, source: Path, text: str, segments: list[dict]) -> None:
+    """Reuse the same document writers; SRT always uses the original timed cues."""
+    suffix = target.suffix.lower()
+    if suffix not in {".txt", ".md", ".srt", ".docx"}:
+        raise ValueError("请选择 TXT、Markdown、SRT 或 DOCX 格式")
+    if suffix == ".srt" and not segments:
+        raise ValueError("这条记录没有真实时间片段，无法导出 SRT")
+    with tempfile.NamedTemporaryFile(dir=target.parent, prefix=".nf-history-", suffix=suffix, delete=False) as temporary:
+        pending = Path(temporary.name)
+    try:
+        if suffix == ".srt":
+            _write_srt(pending, segments)
+        elif suffix == ".txt":
+            pending.write_text(text.rstrip() + "\n", encoding="utf-8")
+        elif suffix == ".md":
+            _write_md_text(pending, source, text)
+        else:
+            _write_docx(pending, source, text)
+        os.replace(pending, target)
+    finally:
+        pending.unlink(missing_ok=True)
