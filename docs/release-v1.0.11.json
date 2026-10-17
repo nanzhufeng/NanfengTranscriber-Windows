@@ -40,5 +40,10 @@
     "Real paid cloud transcription and external text API not called; cloud protocol covered by controlled mocks",
     "All media codecs, physical DPI layouts and persistent Not Responding case not verified"
   ],
-  "automatedTests": 116
+  "automatedTests": 116,
+  "sourceCommit": "4617e49cba8744b306ddfaba937531ceb020c1bc",
+  "remoteDigestVerified": "sha256:df5ad9f6b2ed7090a75097d026088e85a63fbe1f054e40e88f64634e21e1a7a9",
+  "remoteAssetCount": 1,
+  "publishedAt": "2026-10-17T03:41:07Z",
+  "assemblyRun": "https://github.com/nanzhufeng/NanfengTranscriber-Windows/actions/runs/38999705941"
 }
