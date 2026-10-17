@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from app.model_modes import MODE_OPTIONS, model_for_mode, mode_description
+from app.model_modes import MODE_OPTIONS, LOCAL_MODE_OPTIONS, CLOUD_MODELS, model_for_mode, mode_description
 
 
 class LocalModeTests(unittest.TestCase):
@@ -21,7 +21,8 @@ class LocalModeTests(unittest.TestCase):
                 self.assertTrue(runtime_ready())
 
     def test_two_chinese_modes_map_to_only_two_asr_models(self):
-        self.assertEqual(MODE_OPTIONS, ["中文精确", "通用快速"])
+        self.assertEqual(LOCAL_MODE_OPTIONS, ["中文精确", "通用快速"])
+        self.assertEqual(MODE_OPTIONS, LOCAL_MODE_OPTIONS + list(CLOUD_MODELS))
         self.assertEqual(model_for_mode("中文精确"), "qwen3-asr")
         self.assertEqual(model_for_mode("通用快速"), "turbo")
         self.assertIn("Qwen3-ASR-1.7B", mode_description("中文精确")[1])

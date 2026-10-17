@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from app.model_modes import MODE_OPTIONS, MODE_MODEL_LABELS, model_for_mode
+from app.model_modes import MODE_OPTIONS, MODE_MODEL_LABELS, LOCAL_MODE_OPTIONS, CLOUD_MODELS, model_for_mode
 
 ACTIVE_DOCS = (
     "AGENTS.md", "README.md", "docs/CONTRACTS.md", "docs/context.md",
@@ -43,7 +43,8 @@ def audit_project(root: Path, release: bool = False) -> list[tuple[str, bool, st
     except OSError:
         check("README", False, "missing")
     check("model catalogue", set(MODE_OPTIONS) == set(MODE_MODEL_LABELS)
-          and len(MODE_OPTIONS) + 1 <= 3 and len({model_for_mode(name) for name in MODE_OPTIONS}) == len(MODE_OPTIONS))
+          and len(LOCAL_MODE_OPTIONS) == 2 and len(CLOUD_MODELS) == 2
+          and len({model_for_mode(name) for name in MODE_OPTIONS}) == len(MODE_OPTIONS))
     for name in ACTIVE_DOCS:
         file = root / name
         if not file.is_file():

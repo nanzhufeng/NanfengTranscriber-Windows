@@ -19,20 +19,22 @@ class HistoryStore:
     @contextmanager
     def connection(self):
         self.root.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.database, timeout=5)
+        connection = sqlite3.connect(self.database, timeout=0.2)
         connection.row_factory = sqlite3.Row
         try:
-            if connection.execute("PRAGMA user_version").fetchone()[0] > 1:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version > 1:
                 raise sqlite3.DatabaseError("历史数据库来自较新版本，请使用新版软件打开")
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("""CREATE TABLE IF NOT EXISTS records (
+            if version == 0:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("""CREATE TABLE IF NOT EXISTS records (
                 id TEXT PRIMARY KEY, source TEXT NOT NULL, name TEXT NOT NULL,
                 completed TEXT NOT NULL, mode TEXT NOT NULL, model TEXT NOT NULL,
                 language TEXT NOT NULL, duration REAL NOT NULL,
                 original TEXT NOT NULL, final TEXT NOT NULL, edited TEXT,
                 segments TEXT NOT NULL, outputs TEXT NOT NULL, search_text TEXT NOT NULL)""")
-            connection.execute("CREATE INDEX IF NOT EXISTS history_completed ON records(completed DESC)")
-            connection.execute("PRAGMA user_version=1")
+                connection.execute("CREATE INDEX IF NOT EXISTS history_completed ON records(completed DESC)")
+                connection.execute("PRAGMA user_version=1")
             with connection:
                 yield connection
         finally:

@@ -42,6 +42,18 @@ class HistoryStoreTests(unittest.TestCase):
         self.store.save(result(self.result.source_path))
         self.assertEqual(self.store.query()[1], 2)
 
+    def test_history_read_does_not_wait_for_an_existing_write_transaction(self):
+        import sqlite3
+        writer = sqlite3.connect(self.store.database)
+        try:
+            writer.execute("BEGIN IMMEDIATE")
+            records, total = self.store.query()
+            self.assertEqual(total, 1)
+            self.assertEqual(records[0]["id"], self.result.history_id)
+        finally:
+            writer.rollback()
+            writer.close()
+
     def test_edit_preserves_original_segments_and_is_searchable(self):
         before = self.store.get(self.result.history_id)
         self.store.edit(self.result.history_id, "编辑后独有关键词")
@@ -150,13 +162,35 @@ class HistoryUiTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.settings = QSettings(str(self.root / "settings.ini"), QSettings.IniFormat)
         self.window = MainWindow(self.settings)
-        self.addCleanup(self.window.close)
+        self.addCleanup(self.close_and_drain)
         self.window.show()
         with patch("app.main.probe_duration_seconds", return_value=0):
             self.window._add_row(self.root / "音频.wav")
         self.result = result(self.root / "音频.wav")
+        self.window.active_rows = {0}
         self.window._on_item_finished(0, self.result)
+        self.wait_for_history_save()
         self.app.processEvents()
+
+    def wait_for_history_save(self):
+        from PySide6.QtTest import QTest
+        for _ in range(600):
+            self.app.processEvents()
+            if not self.window._history_save_jobs:
+                return
+            QTest.qWait(5)
+        self.fail("history save did not complete")
+
+    def close_and_drain(self):
+        from PySide6.QtTest import QTest
+        self.window.close()
+        for _ in range(600):
+            self.app.processEvents()
+            page = self.window.history_page
+            if not self.window._history_save_jobs and (page is None or page._read_job is None):
+                return
+            QTest.qWait(5)
+        self.fail("background history work did not stop")
 
     def test_navigation_keeps_queue_worker_and_progress(self):
         worker = object()
@@ -171,6 +205,28 @@ class HistoryUiTests(unittest.TestCase):
         self.assertIs(self.window.right_stack.currentWidget(), self.window.workbench_page)
         self.assertIs(self.window.worker, worker)
         self.window.worker = None
+
+    def test_completed_queue_row_disappears_only_after_history_saved(self):
+        self.assertTrue(self.window.table.isRowHidden(0))
+        self.assertEqual(self.window.history_store.query()[1], 1)
+        with patch("app.main.probe_duration_seconds", return_value=0):
+            self.window._add_row(self.root / "next.wav")
+        self.window.active_rows = {0, 1}
+        self.window._on_item_failed(1, "受控失败")
+        self.assertFalse(self.window.table.isRowHidden(1))
+        self.window._on_all_done()
+        self.assertEqual(self.window.pending_completion_summary["success"], 1)
+        self.assertEqual(self.window.pending_completion_summary["failed"], 1)
+        self.window.pending_completion_summary = None
+        self.window._cleanup_worker()
+        self.assertEqual(self.window.table.rowCount(), 1)
+        self.assertEqual(self.window.table.item(0, 3).text(), "next.wav")
+        self.assertEqual(self.window.table.item(0, 2).text(), "失败")
+        self.assertEqual(self.window.table.item(0, 0).text(), "1")
+        from PySide6.QtWidgets import QPushButton
+        with patch.object(self.window, "_locate_row_file") as locate:
+            self.window.table.cellWidget(0, 11).findChild(QPushButton).click()
+            locate.assert_called_once_with(0)
 
     def test_editor_save_unsaved_cancel_and_original_protection(self):
         self.window._show_history()
@@ -271,10 +327,15 @@ class HistoryUiTests(unittest.TestCase):
         second = result(self.root / "another.wav")
         with patch.object(self.window.history_store, "save", side_effect=PermissionError("read only")):
             self.window._on_item_finished(0, second)
+            self.wait_for_history_save()
         self.assertEqual(self.window.table.item(0, 2).text(), "完成")
+        self.assertFalse(self.window.table.isRowHidden(0))
         self.assertIn(second.history_id, self.window.pending_history_results)
+        self.window.active_rows.clear()
         self.window._show_history()
+        self.wait_for_history_save()
         self.assertEqual(self.window.pending_history_results, {})
+        self.assertEqual(self.window.table.rowCount(), 0)
         self.assertEqual(self.window.history_store.get(second.history_id)["final"], second.text)
 
     def test_history_more_is_a_transparent_circle_with_colored_icon(self):
@@ -391,3 +452,33 @@ class HistoryUiTests(unittest.TestCase):
         cues.resume_follow.timeout.emit()
         self.app.processEvents()
         self.assertLess(abs(cues.visualItemRect(cues.currentItem()).center().y() - cues.viewport().rect().center().y()), 3)
+
+    def test_slow_history_query_leaves_navigation_and_ui_timer_responsive(self):
+        import threading
+        from PySide6.QtCore import QTimer
+        from PySide6.QtTest import QTest
+        entered, release = threading.Event(), threading.Event()
+        original = self.window.history_store.query
+        def slow_query(*args, **kwargs):
+            entered.set()
+            release.wait(3)
+            return original(*args, **kwargs)
+        try:
+            with patch.object(self.window.history_store, "query", side_effect=slow_query):
+                self.window._show_history()
+                self.assertTrue(entered.wait(1))
+                pulses = []
+                QTimer.singleShot(0, lambda: pulses.append(True))
+                self.app.processEvents()
+                self.assertEqual(pulses, [True])
+                self.window._show_workbench()
+                self.assertIs(self.window.right_stack.currentWidget(), self.window.workbench_page)
+                release.set()
+                for _ in range(200):
+                    self.app.processEvents()
+                    if self.window.history_page._read_job is None:
+                        break
+                    QTest.qWait(5)
+                self.assertEqual(self.window.history_page.count.text(), "1 条记录")
+        finally:
+            release.set()

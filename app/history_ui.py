@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject, QRunnable, QThreadPool, QRectF, QPoint, QSize, QEvent
+from PySide6.QtCore import Qt, QTimer, Signal, Slot, QObject, QRunnable, QThreadPool, QRectF, QPoint, QSize, QEvent
 from PySide6.QtGui import QPixmap, QPainter, QColor, QPainterPath, QFont, QTextCursor, QTextBlockFormat
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
@@ -20,6 +20,59 @@ from PySide6.QtWidgets import (
 from .transcriber import export_history_document, history_subtitle_cues, safe_output_stem
 from .ui_icons import icon
 from .media_player import MediaPlayer
+
+
+class HistoryReadSignals(QObject):
+    done = Signal(int, object, str)
+
+
+_history_save_pool = None
+
+
+def start_history_save(job):
+    global _history_save_pool
+    if _history_save_pool is None:
+        _history_save_pool = QThreadPool()
+        _history_save_pool.setMaxThreadCount(1)
+    _history_save_pool.start(job)
+
+
+class HistorySaveSignals(QObject):
+    done = Signal(str, str)
+
+
+class HistorySaveJob(QRunnable):
+    def __init__(self, save, result):
+        super().__init__()
+        self.save, self.result = save, result
+        self.signals = HistorySaveSignals()
+
+    def run(self):
+        try:
+            self.save(self.result)
+            self.signals.done.emit(self.result.history_id, "")
+        except Exception:
+            self.signals.done.emit(self.result.history_id, "请检查历史目录权限或稍后重试。")
+
+
+class HistoryReadJob(QRunnable):
+    def __init__(self, store, request):
+        super().__init__()
+        self.store, self.request = store, request
+        self.cancelled = False
+        self.signals = HistoryReadSignals()
+
+    def run(self):
+        sequence, keyword, period, limit = self.request
+        try:
+            if self.cancelled:
+                self.signals.done.emit(sequence, None, "")
+                return
+            records, total = self.store.query(keyword, period, limit)
+            result = (records, total, len(self.store.invalid_ids()) if not self.cancelled else 0)
+            self.signals.done.emit(sequence, result, "")
+        except Exception:
+            self.signals.done.emit(sequence, None, "历史暂时无法读取，请检查目录权限或稍后重试。")
 
 
 class ThumbnailSignals(QObject):
@@ -249,12 +302,21 @@ class HistoryPage(QWidget):
         self.selection_mode = False
         self.limit = store.PAGE_SIZE
         self.records = []
+        self._read_sequence = 0
+        self._shutting_down = False
+        self._read_job = None
+        self._read_request = None
         self.jobs, self.thumbnails = {}, {}
         self.thumbnail_pool = QThreadPool(self)
         self.thumbnail_pool.setMaxThreadCount(2)
         self.current_record = None
         self.saved_text = ""
         self.columns = 0
+        self._render_sequence = 0
+        self._deleted_records = set()
+        self._render_timer = QTimer(self)
+        self._render_timer.setSingleShot(True)
+        self._render_timer.timeout.connect(self.render)
         self.setStyleSheet("""
             QFrame#HistoryCard { background: #ffffff; border: none; border-radius: 14px; }
             QLabel#HistoryTitle { font-size: 22px; font-weight: 700; color: #182430; }
@@ -533,6 +595,13 @@ class HistoryPage(QWidget):
             self.back_requested.emit()
 
     def shutdown(self):
+        self._shutting_down = True
+        if self._read_job is not None:
+            self._read_job.cancelled = True
+        self._render_sequence += 1
+        self._render_timer.stop()
+        self._read_sequence += 1
+        self._read_request = None
         self.media_view.stop()
         for job in self.jobs.values():
             job.cancelled.set()
@@ -545,16 +614,43 @@ class HistoryPage(QWidget):
         self.reload()
 
     def reload(self):
-        try:
-            self.records, total = self.store.query(self.search.text(), self.period.currentText(), self.limit)
-            self.count.setText(f"{total} 条记录")
-            self.more_button.setVisible(len(self.records) < total)
-            invalid_count = len(self.store.invalid_ids())
-            self.clean_button.setVisible(invalid_count > 0)
-            self.clean_button.setText(f"清理失效（{invalid_count}）")
-            self.render()
-        except Exception as exc:
-            self.show_error(f"历史记录暂时无法读取：{exc}。转写工作台仍可使用，请检查历史目录权限。")
+        if self._shutting_down:
+            return
+        self._read_sequence += 1
+        self._read_request = (self._read_sequence, self.search.text(), self.period.currentText(), self.limit)
+        if self._read_job is None:
+            self._start_history_read()
+
+    def _start_history_read(self):
+        if self._read_request is None:
+            return
+        job = HistoryReadJob(self.store, self._read_request)
+        self._read_job = job
+        job.signals.done.connect(self._history_loaded)
+        QThreadPool.globalInstance().start(job)
+
+    @Slot(int, object, str)
+    def _history_loaded(self, sequence, result, error):
+        self._read_job = None
+        if self._shutting_down:
+            return
+        if sequence != self._read_sequence:
+            self._start_history_read()
+            return
+        if error:
+            self.show_error(error)
+            return
+        self.records, total, invalid_count = result
+        self.count.setText(f"{total} 条记录")
+        self.more_button.setVisible(len(self.records) < total)
+        self.clean_button.setVisible(invalid_count > 0)
+        self.clean_button.setText(f"清理失效（{invalid_count}）")
+        if not self.pending_history_error():
+            self.error_label.hide()
+        self.render()
+
+    def pending_history_error(self):
+        return bool(getattr(self.window(), "_history_failed_ids", set()))
 
     def load_more(self):
         self.limit += self.store.PAGE_SIZE
@@ -563,14 +659,20 @@ class HistoryPage(QWidget):
     def filter_changed(self):
         self.limit = self.store.PAGE_SIZE
         self.selected.clear()
+        self.selection_count.setText("已选 0 项")
+        self.delete_button.setEnabled(False)
         self.reload()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if (2 if self.width() >= 1000 else 1) != self.columns:
-            QTimer.singleShot(0, self.render)
+            self._render_timer.start(0)
 
     def render(self):
+        if self._shutting_down:
+            return
+        self._render_sequence += 1
+        sequence = self._render_sequence
         self.columns = 2 if self.width() >= 1000 else 1
         self.grid.setColumnStretch(1, 1 if self.columns == 2 else 0)
         self.thumbnails.clear()
@@ -583,19 +685,31 @@ class HistoryPage(QWidget):
             message = QLabel("暂无匹配记录" if self.search.text() or self.period.currentIndex() else "暂无转写历史，完成转写后会自动保存在这里。")
             message.setAlignment(Qt.AlignCenter)
             self.grid.addWidget(message, 0, 0, 1, self.columns)
-        for record in self.records:
-            current_day = record["completed"][:10]
-            if current_day != day:
-                if column:
-                    row += 1
-                label = QLabel(datetime.fromisoformat(record["completed"]).strftime("%Y 年 %m 月 %d 日"))
-                label.setObjectName("HistoryDay")
-                self.grid.addWidget(label, row, 0, 1, self.columns)
-                row, column, day = row + 1, 0, current_day
-            self.grid.addWidget(self.card(record), row, column)
-            column += 1
-            if column == self.columns:
-                row, column = row + 1, 0
+        records = iter(self.records)
+        state = [row, column, day]
+        def append_batch():
+            if sequence != self._render_sequence:
+                return
+            row, column, day = state
+            for _ in range(8):
+                record = next(records, None)
+                if record is None:
+                    return
+                current_day = record["completed"][:10]
+                if current_day != day:
+                    if column:
+                        row += 1
+                    label = QLabel(datetime.fromisoformat(record["completed"]).strftime("%Y 年 %m 月 %d 日"))
+                    label.setObjectName("HistoryDay")
+                    self.grid.addWidget(label, row, 0, 1, self.columns)
+                    row, column, day = row + 1, 0, current_day
+                self.grid.addWidget(self.card(record), row, column)
+                column += 1
+                if column == self.columns:
+                    row, column = row + 1, 0
+            state[:] = row, column, day
+            QTimer.singleShot(0, append_batch)
+        append_batch()
         self.selection_count.setText(f"已选 {len(self.selected)} 项" if self.selection_mode else "")
         self.delete_button.setEnabled(bool(self.selected))
 
@@ -714,12 +828,8 @@ class HistoryPage(QWidget):
         self.jobs.pop(record_id, None)
         if not path:
             return
-        try:
-            self.store.get(record_id)
-        except ValueError:
+        if record_id in self._deleted_records:
             Path(path).unlink(missing_ok=True)
-            return
-        except Exception:
             return
         control = self.thumbnails.get(record_id)
         if control:
@@ -865,6 +975,10 @@ class HistoryPage(QWidget):
             return
         def remove():
             self.store.delete(ids)
+            self._deleted_records.update(ids)
+            for record_id in ids:
+                if record_id in self.jobs:
+                    self.jobs[record_id].cancelled.set()
             self.selected.difference_update(ids)
             self.reload()
         self.run_action(remove)

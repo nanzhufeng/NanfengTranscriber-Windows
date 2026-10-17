@@ -1,0 +1,44 @@
+{
+  "version": "1.0.11",
+  "bytes": 167122881,
+  "sha256": "df5ad9f6b2ed7090a75097d026088e85a63fbe1f054e40e88f64634e21e1a7a9",
+  "authenticode": "NotSigned",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.11-Setup.exe",
+  "releaseUrl": "https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.11",
+  "runtime": "on-demand user cache",
+  "modelWeights": "download on first use",
+  "installerLanguage": "Simplified Chinese",
+  "releaseContractChecks": 23,
+  "windowsReleaseChecks": 14,
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "payloadFilesVerified": 845,
+  "packagedPowerShell5Verification": "PASS - existing runtime CUDA True",
+  "installedMediaPlayback": {
+    "videoFrameValid": true,
+    "position": 1486,
+    "duration": 12027,
+    "error": "",
+    "subtitle": "这是一段受控演示视频",
+    "historyCount": 1
+  },
+  "offlineTranscription": {
+    "success": true,
+    "mode": "中文精确",
+    "characters": 45,
+    "exports": [
+      "speech.txt",
+      "speech.srt"
+    ],
+    "notices": [
+      "正在检查 Qwen/Qwen3-ASR-1.7B-hf，缺少文件时下载，完成后本地复用。",
+      "正在检查 Qwen/Qwen3-ForcedAligner-0.6B-hf，缺少文件时下载，完成后本地复用。"
+    ]
+  },
+  "limitations": [
+    "Production AppId upgrade on user installation not performed",
+    "Real paid cloud transcription and external text API not called; cloud protocol covered by controlled mocks",
+    "All media codecs, physical DPI layouts and persistent Not Responding case not verified"
+  ],
+  "automatedTests": 116
+}

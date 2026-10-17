@@ -69,6 +69,8 @@ class TranscribeOptions:
     create_video_subfolder: bool = False
     save_beside_video: bool = False
     precision_subtitles: bool = False
+    cloud_api_key: str = field(default="", repr=False, compare=False)
+    cloud_state_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -154,7 +156,7 @@ def probe_duration_seconds(source: Path, options: TranscribeOptions) -> float:
         str(source),
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, check=True, **_subprocess_window_options())
+        completed = subprocess.run(command, capture_output=True, text=True, check=True, timeout=5, **_subprocess_window_options())
         return max(0.0, float(completed.stdout.strip()))
     except Exception:
         return 0.0
@@ -602,6 +604,10 @@ class TranscriptionSession:
         cancel_callback: CancelCallback | None = None,
     ) -> list[dict[str, Any]]:
         _raise_if_cancelled(cancel_callback)
+        from .model_modes import CLOUD_MODELS
+        if options.model_size in CLOUD_MODELS:
+            from .cloud_asr import transcribe_cloud
+            return transcribe_cloud(audio_path, options, progress_callback, cancel_callback)
         if model_for_mode(options.model_size) == "qwen3-asr":
             from .qwen_bridge import QwenWorker
             if self._qwen_worker is None:

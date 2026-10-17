@@ -10,7 +10,7 @@ import time
 import traceback
 import wave
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,7 @@ try:
 except ImportError:  # macOS 迁移时保留 Qt 的系统提示音回退。
     winsound = None
 
-from PySide6.QtCore import QEvent, QObject, QRect, QRectF, QSize, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QPersistentModelIndex, QThreadPool, QRect, QRectF, QSize, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap, QRegion
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QRadioButton,
     QScrollArea,
+    QSizeGrip,
     QGraphicsDropShadowEffect,
     QProgressBar,
     QProgressDialog,
@@ -50,6 +51,7 @@ from PySide6.QtWidgets import (
     QStylePainter,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -129,6 +131,7 @@ COL_LOCATE = 11
 
 SOURCE_PATH_ROLE = Qt.UserRole
 OUTPUT_FILE_ROLE = Qt.UserRole + 1
+HISTORY_ID_ROLE = Qt.UserRole + 2
 
 
 class CenteredCheckBoxDelegate(QStyledItemDelegate):
@@ -372,11 +375,15 @@ class AppSettingsDialog(QDialog):
         precision_subtitles: bool = False,
     ) -> None:
         super().__init__(parent)
+        self._geometry_settings = getattr(parent, "settings", None)
+        self._geometry_restored = False
         self.setWindowTitle("设置")
         self.setModal(True)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setMinimumWidth(660)
+        self.setMinimumSize(660, 420)
+        self.setMouseTracking(True)
+        self.installEventFilter(self)
         self.setStyleSheet(
             "QDialog { background: transparent; }"
             "QFrame#SettingsCard { background: #ffffff; border: none; border-radius: 18px; }"
@@ -411,7 +418,11 @@ class AppSettingsDialog(QDialog):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(22, 20, 22, 20)
         layout.setSpacing(16)
-        heading = QHBoxLayout()
+        self._drag_widget = QWidget()
+        self._drag_widget.setStyleSheet("background: transparent;")
+        self._drag_widget.installEventFilter(self)
+        heading = QHBoxLayout(self._drag_widget)
+        heading.setContentsMargins(0, 0, 0, 0)
         title = QLabel("设置")
         title.setObjectName("SettingsTitle")
         self._title_widget = title
@@ -425,7 +436,7 @@ class AppSettingsDialog(QDialog):
         close.setFixedSize(32, 32)
         close.clicked.connect(self.reject)
         heading.addWidget(close)
-        layout.addLayout(heading)
+        layout.addWidget(self._drag_widget)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -492,6 +503,56 @@ class AppSettingsDialog(QDialog):
         self.create_video_subfolder_check = toggle(output_box, "新建视频同名子文件夹", create_video_subfolder)
         hint(output_box, "关闭时直接保存到目标目录。")
         body.addWidget(output)
+        cloud, cloud_box = section("云端转写 API", "file")
+        hint(cloud_box, "高精度 Qwen / 低成本 Paraformer · 阿里云百炼（北京）")
+        self.cloud_key_edit = QLineEdit()
+        self.cloud_key_edit.setObjectName("CloudApiKey")
+        self.cloud_key_edit.setStyleSheet("""
+            QLineEdit#CloudApiKey, QLineEdit#CloudApiKey:focus {
+                background: #ffffff; border: none; border-radius: 8px;
+                padding: 9px; color: #1f2937;
+            }
+            QLineEdit#CloudApiKey QToolButton {
+                background: transparent; border: none; border-radius: 6px;
+            }
+            QLineEdit#CloudApiKey QToolButton:hover,
+            QLineEdit#CloudApiKey QToolButton:focus { background: #eeeeee; }
+        """)
+        self.cloud_key_edit.setEchoMode(QLineEdit.Password)
+        from .cloud_credentials import is_configured
+        configured = hasattr(parent, "settings") and is_configured(parent.settings)
+        self.cloud_key_edit.setPlaceholderText("填写百炼 API Key")
+        if configured:
+            from .cloud_credentials import read_api_key
+            try:
+                self.cloud_key_edit.setText(read_api_key(parent.settings))
+            except RuntimeError:
+                self.cloud_key_edit.setPlaceholderText("密钥读取失败，请重新填写")
+        self.cloud_key_edit.setAccessibleName("百炼 API Key")
+        reveal = self.cloud_key_edit.addAction(
+            parent._configuration_icon("eye", "#667782"), QLineEdit.TrailingPosition)
+        reveal.setText("显示 API Key")
+        reveal.setToolTip("显示 API Key")
+        reveal.setCheckable(True)
+        reveal_button = self.cloud_key_edit.findChild(QToolButton)
+        if reveal_button is not None:
+            reveal_button.setFocusPolicy(Qt.StrongFocus)
+            reveal_button.setAccessibleName("显示 API Key")
+        def reveal_cloud_key(shown):
+            self.cloud_key_edit.setEchoMode(QLineEdit.Normal if shown else QLineEdit.Password)
+            label = "隐藏 API Key" if shown else "显示 API Key"
+            reveal.setText(label)
+            reveal.setToolTip(label)
+            reveal.setIcon(parent._configuration_icon("eye-off" if shown else "eye", "#667782"))
+            if reveal_button is not None:
+                reveal_button.setAccessibleName(label)
+        reveal.toggled.connect(reveal_cloud_key)
+        self.cloud_key_clear = QCheckBox("清除已保存密钥")
+        self.cloud_key_clear.toggled.connect(lambda checked: self.cloud_key_edit.clear() if checked else None)
+        cloud_box.addWidget(self.cloud_key_edit)
+        cloud_box.addWidget(self.cloud_key_clear)
+        hint(cloud_box, "密钥仅由当前 Windows 用户加密保存；使用云端模型会上传音频并可能计费。")
+        body.addWidget(cloud)
         lower = QHBoxLayout()
         lower.setSpacing(12)
         subtitles, subtitles_box = section("字幕处理", "file")
@@ -525,15 +586,66 @@ class AppSettingsDialog(QDialog):
         save_button.clicked.connect(self.accept)
         buttons.addWidget(cancel_button)
         buttons.addWidget(save_button)
+        resize_grip = QSizeGrip(self)
+        resize_grip.setFixedSize(18, 18)
+        resize_grip.setToolTip("拖动调整设置窗口大小")
+        buttons.addWidget(resize_grip, 0, Qt.AlignBottom)
         layout.addLayout(buttons)
         self.resize(700, min(670, QApplication.primaryScreen().availableGeometry().height() - 48))
 
     def eventFilter(self, watched, event):
-        if watched is getattr(self, "_title_widget", None) and event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+        if watched is self:
+            if event.type() in (QEvent.MouseMove, QEvent.MouseButtonPress):
+                position = event.position()
+                edges = Qt.Edges()
+                if position.x() < 16:
+                    edges |= Qt.LeftEdge
+                elif position.x() >= self.width() - 16:
+                    edges |= Qt.RightEdge
+                if position.y() < 16:
+                    edges |= Qt.TopEdge
+                elif position.y() >= self.height() - 16:
+                    edges |= Qt.BottomEdge
+                if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton and edges:
+                    if self.windowHandle() and self.windowHandle().startSystemResize(edges):
+                        return True
+                if edges in (Qt.LeftEdge | Qt.TopEdge, Qt.RightEdge | Qt.BottomEdge):
+                    self.setCursor(Qt.SizeFDiagCursor)
+                elif edges in (Qt.RightEdge | Qt.TopEdge, Qt.LeftEdge | Qt.BottomEdge):
+                    self.setCursor(Qt.SizeBDiagCursor)
+                elif edges & (Qt.LeftEdge | Qt.RightEdge):
+                    self.setCursor(Qt.SizeHorCursor)
+                elif edges:
+                    self.setCursor(Qt.SizeVerCursor)
+                else:
+                    self.unsetCursor()
+            elif event.type() == QEvent.Leave:
+                self.unsetCursor()
+        if watched in (getattr(self, "_title_widget", None), getattr(self, "_drag_widget", None)) and event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             if self.windowHandle():
                 self.windowHandle().startSystemMove()
             return True
         return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._geometry_restored:
+            self._geometry_restored = True
+            saved = self._geometry_settings.value("windows/settings_geometry") if self._geometry_settings is not None else None
+            if saved:
+                self.restoreGeometry(saved)
+                screen = QApplication.screenAt(self.frameGeometry().center()) or self.parentWidget().screen()
+                available = screen.availableGeometry()
+                self.resize(min(self.width(), available.width()), min(self.height(), available.height()))
+                self.move(
+                    max(available.left(), min(self.x(), available.right() - self.width() + 1)),
+                    max(available.top(), min(self.y(), available.bottom() - self.height() + 1)),
+                )
+
+    def done(self, result):
+        if self._geometry_settings is not None:
+            self._geometry_settings.setValue("windows/settings_geometry", self.saveGeometry())
+        super().done(result)
 
     def _open_about(self) -> None:
         AboutDialog(self).exec()
@@ -862,6 +974,11 @@ class MainWindow(QMainWindow):
         self.history_store = HistoryStore(history_root)
         self.history_page = None
         self.pending_history_results = {}
+        self._history_save_jobs = {}
+        self._history_failed_ids = set()
+        self._closing = False
+        self._duration_jobs = {}
+        self._import_job = None
         self.project_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
         self.ffmpeg_dir = find_ffmpeg_dir(self.project_root)
         self.runtime_log_path = self.project_root / "runtime-log.txt"
@@ -981,6 +1098,11 @@ class MainWindow(QMainWindow):
             return
         if self.history_page is not None:
             self.history_page.shutdown()
+        self._closing = True
+        for job in self._duration_jobs.values():
+            job.cancelled = True
+        if self._import_job is not None:
+            self._import_job.cancelled = True
         self._save_settings()
         super().closeEvent(event)
 
@@ -1068,7 +1190,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(workflow_title)
         steps = QVBoxLayout()
         steps.setSpacing(0)
-        for index, (text, icon) in enumerate((("添加文件", "folder"), ("选择模型", "cpu"), ("开始转写", "play"), ("检查导出", "file-search")), start=1):
+        for index, text in enumerate(("添加文件", "选择模型", "开始转写", "检查导出"), start=1):
             row = QHBoxLayout()
             row.setSpacing(14)
             number = QLabel(f"{index:02d}")
@@ -1076,9 +1198,6 @@ class MainWindow(QMainWindow):
             number.setFixedSize(30, 30)
             number.setAlignment(Qt.AlignCenter)
             row.addWidget(number)
-            symbol = QLabel()
-            symbol.setPixmap(self._configuration_icon(icon, "#405362").pixmap(20, 20))
-            row.addWidget(symbol)
             label = QLabel(text)
             label.setObjectName("WorkflowLabel")
             row.addWidget(label, 1)
@@ -1369,16 +1488,15 @@ class MainWindow(QMainWindow):
             self.history_page.back_requested.connect(self._show_workbench)
             self.right_stack.addWidget(self.history_page)
         for result in list(self.pending_history_results.values()):
-            try:
-                self.history_store.save(result)
-                self.pending_history_results.pop(result.history_id, None)
-            except Exception:
-                break
-        if self.pending_history_results:
+            self._queue_history_save(result)
+        if self._history_failed_ids:
             self.history_page.show_error("部分已完成任务的历史保存失败，转写导出文件仍保留。请检查历史目录权限；再次打开历史会重试保存。")
         else:
             self.history_button.setText("历史")
             self.history_page.error_label.hide()
+        if self.worker is None and self.worker_thread is None and not self.active_rows:
+            self._remove_archived_queue_rows()
+            self._update_status()
         self.history_page.show_list()
         self.right_stack.setCurrentWidget(self.history_page)
         self.history_page.work_status.setText("后台正在转写，可返回查看进度" if self.worker_thread is not None and self.worker_thread.isRunning() else "")
@@ -1611,6 +1729,15 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec() != QDialog.Accepted:
             return
+        from .cloud_credentials import save_api_key
+        try:
+            if dialog.cloud_key_edit.text().strip():
+                save_api_key(self.settings, dialog.cloud_key_edit.text())
+            elif dialog.cloud_key_clear.isChecked():
+                save_api_key(self.settings, "")
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "API Key 未保存", str(exc))
+            return
         values = dialog.values()
         self.completion_sound_enabled = values["completion_sound"]
         self.completion_dialog_enabled = values["completion_dialog"]
@@ -1681,7 +1808,42 @@ class MainWindow(QMainWindow):
         return media_paths
 
     def _add_paths(self, paths: list[Path]) -> None:
-        media_paths = self._expand_media_paths(paths)
+        if self._closing:
+            return
+        if self._import_job is not None:
+            self.status_label.setText("正在添加文件，请稍后重试。")
+            return
+        from .media_probe import PathDiscovery
+        job = PathDiscovery(self._expand_media_paths, list(paths))
+        self._import_job = job
+        self._import_progress = QProgressDialog("正在读取文件列表…", "取消", 0, 0, self)
+        self._import_progress.setWindowTitle("添加文件")
+        self._import_progress.setWindowModality(Qt.NonModal)
+        self._import_progress.canceled.connect(lambda: setattr(job, "cancelled", True))
+        self._import_progress.show()
+        for control in (self.add_files_button, self.add_folder_button, self.start_button, self.clear_button):
+            control.setEnabled(False)
+        job.signals.done.connect(self._discovery_ready)
+        QThreadPool.globalInstance().start(job)
+
+    @Slot(object, object, str)
+    def _discovery_ready(self, job, paths, error):
+        if self._import_job is not job:
+            return
+        cancelled = job.cancelled
+        self._import_progress.close()
+        self._import_job = None
+        if self._closing:
+            return
+        if not cancelled and not error:
+            self._insert_discovered_paths(paths)
+        elif error:
+            self.status_label.setText(error)
+        if self.worker_thread is None:
+            for control in (self.add_files_button, self.add_folder_button, self.start_button, self.clear_button):
+                control.setEnabled(True)
+
+    def _insert_discovered_paths(self, media_paths) -> None:
         existing = {
             self.table.item(row, COL_OUTPUT).data(SOURCE_PATH_ROLE)
             for row in range(self.table.rowCount())
@@ -1695,6 +1857,8 @@ class MainWindow(QMainWindow):
         progress.setAutoReset(True)
         added = 0
         for index, path in enumerate(media_paths, start=1):
+            if self._closing:
+                break
             progress.setValue(index - 1)
             progress.setLabelText(f"正在读取文件信息... {index}/{len(media_paths)}")
             QApplication.processEvents()
@@ -1718,7 +1882,7 @@ class MainWindow(QMainWindow):
         self._set_select_cell(row, True)
         self._set_status_cell(row, "等待")
         self._set_cell(row, COL_FILE, path.name)
-        self._set_cell(row, COL_DURATION, self._format_duration(probe_duration_seconds(path, self._build_preview_options())))
+        self._set_cell(row, COL_DURATION, "-")
         self._set_combo_cell(row, COL_LANGUAGE, LANGUAGE_OPTIONS, self.language_combo.currentText())
         self._set_combo_cell(row, COL_MODEL, MODEL_OPTIONS, self.model_combo.currentText())
         self._set_cell(row, COL_PROGRESS, "0%")
@@ -1727,6 +1891,21 @@ class MainWindow(QMainWindow):
         output_item = self._set_cell(row, COL_OUTPUT, str(Path(self.output_edit.text()) / safe_output_stem(path.stem)))
         output_item.setData(SOURCE_PATH_ROLE, str(path.resolve()))
         self._set_locate_button(row)
+
+        from .media_probe import DurationProbe, start_probe
+        index = QPersistentModelIndex(self.table.model().index(row, COL_DURATION))
+        job = DurationProbe(index, path, self._build_preview_options(), probe_duration_seconds)
+        self._duration_jobs[id(job)] = job
+        job.signals.done.connect(self._duration_ready)
+        start_probe(job)
+
+    @Slot(object, object, float)
+    def _duration_ready(self, job_id, index, seconds):
+        self._duration_jobs.pop(job_id, None)
+        if self._closing:
+            return
+        if index.isValid() and index.model() is self.table.model():
+            self._set_cell(index.row(), COL_DURATION, self._format_duration(seconds))
 
     def _set_locate_button(self, row: int) -> None:
         button = QPushButton()
@@ -2049,7 +2228,7 @@ class MainWindow(QMainWindow):
         return gpu_libraries_available(dll_names)
 
     def _warn_gpu_runtime_if_needed(self) -> bool:
-        if all(model_for_mode(item.model_size) == "qwen3-asr" for item in self._selected_items()):
+        if all(model_for_mode(item.model_size) != "turbo" for item in self._selected_items()):
             return True  # The isolated PyTorch runtime performs its own CUDA check.
         if self.compute_mode_combo.currentText() != "GPU 快速" or self.gpu_runtime_warning_ack:
             return True
@@ -2115,7 +2294,24 @@ class MainWindow(QMainWindow):
             self._debug_log("start aborted: no selected runnable items")
             QMessageBox.information(self, "没有待转写项目", "请先勾选等待或失败的项目。")
             return
-        needs_qwen = any(model_for_mode(item.model_size) == "qwen3-asr" for item in items) or (options.export_srt and options.precision_subtitles)
+        from .model_modes import CLOUD_MODELS
+        cloud_items = [item for item in items if item.model_size in CLOUD_MODELS]
+        if cloud_items:
+            from .cloud_credentials import read_api_key
+            try:
+                api_key = read_api_key(self.settings)
+            except RuntimeError as exc:
+                QMessageBox.warning(self, "百炼 API Key", str(exc))
+                return
+            if not api_key:
+                QMessageBox.information(self, "未配置 API Key", "请在设置的“云端转写 API”中填写百炼 API Key。")
+                return
+            names = "、".join(dict.fromkeys(item.model_size for item in cloud_items))
+            answer = QMessageBox.question(self, "云端转写", f"本次 {len(cloud_items)} 个文件将使用 {names}。\n音频会上传至阿里云百炼（北京），可能产生费用；本地模型任务仍在本机处理。\n\n确认开始？", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                return
+            options = replace(options, cloud_api_key=api_key, cloud_state_dir=self.history_store.root / "cloud-tasks")
+        needs_qwen = any(model_for_mode(item.model_size) == "qwen3-asr" for item in items) or (options.export_srt and options.precision_subtitles and any(model_for_mode(item.model_size) == "turbo" for item in items))
         if needs_qwen and getattr(sys, "frozen", False):
             from .qwen_bridge import runtime_ready
             if not runtime_ready():
@@ -2231,6 +2427,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("正在停止，当前阶段结束后退出。")
 
     def _clear(self) -> None:
+        for job in self._duration_jobs.values():
+            job.cancelled = True
         self.table.setRowCount(0)
         self.main_progress.setValue(0)
         self.total_eta_label.setText("总剩余：--")
@@ -2295,20 +2493,51 @@ class MainWindow(QMainWindow):
 
     @Slot(int, object)
     def _on_item_finished(self, row: int, result: TranscribeResult) -> None:
-        if result.source_path is not None:
-            try:
-                self.history_store.save(result)
-                if self.history_page is not None and self.history_page.stack.currentIndex() == 0:
-                    self.history_page.reload()
-            except Exception as exc:
-                self.pending_history_results[result.history_id] = result
-                self.history_button.setText("历史 · 保存失败")
-                self.history_button.setToolTip(f"转写已完成且导出文件保留；历史未保存：{exc}。点击历史重试。")
         self._set_status_cell(row, "完成")
         self._set_cell(row, COL_PROGRESS, "100%")
         if result.files:
             self._update_output_cell(row, str(result.files[0].parent), result.files[0])
+        self.table.item(row, COL_OUTPUT).setData(HISTORY_ID_ROLE, result.history_id)
+        # Worker callbacks use fixed row numbers until the batch has ended.
+        self.table.setRowHidden(row, False)
+        if result.source_path is not None:
+            self.pending_history_results[result.history_id] = result
+            self._queue_history_save(result)
         self._update_main_progress()
+
+    def _queue_history_save(self, result) -> None:
+        if result.history_id in self._history_save_jobs:
+            return
+        from .history_ui import HistorySaveJob, start_history_save
+        job = HistorySaveJob(self.history_store.save, result)
+        self._history_save_jobs[result.history_id] = job
+        job.signals.done.connect(self._history_saved)
+        start_history_save(job)
+
+    @Slot(str, str)
+    def _history_saved(self, record_id, error) -> None:
+        self._history_save_jobs.pop(record_id, None)
+        if self._closing:
+            return
+        if error:
+            self._history_failed_ids.add(record_id)
+            self.history_button.setText("历史 · 保存失败")
+            self.history_button.setToolTip("转写导出文件已保留；历史未保存。点击历史可重试保存。" + error)
+            return
+        self.pending_history_results.pop(record_id, None)
+        self._history_failed_ids.discard(record_id)
+        if not self._history_failed_ids:
+            self.history_button.setText("历史")
+            self.history_button.setToolTip("查看转写历史")
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, COL_OUTPUT)
+            if item and item.data(HISTORY_ID_ROLE) == record_id:
+                self.table.hideRow(row)
+        if self.worker is None and self.worker_thread is None and not self.active_rows:
+            self._remove_archived_queue_rows()
+            self._update_status()
+        if self.history_page is not None and self.history_page.stack.currentIndex() == 0:
+            self.history_page.reload()
 
     @Slot(int, str)
     def _on_item_failed(self, row: int, error: str) -> None:
@@ -2384,6 +2613,7 @@ class MainWindow(QMainWindow):
         self.clear_button.setEnabled(True)
         self.add_files_button.setEnabled(True)
         self.add_folder_button.setEnabled(True)
+        self._remove_archived_queue_rows()
         self._update_status()
         summary = self.pending_completion_summary
         completion_target = self.pending_completion_target
@@ -2403,6 +2633,19 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(0, lambda target=completion_target: self._reveal_path(target))
             if self.completion_dialog_enabled:
                 QTimer.singleShot(0, lambda summary=summary: self._show_completion_dialog(summary))
+
+    def _remove_archived_queue_rows(self) -> None:
+        removed = False
+        for row in reversed(range(self.table.rowCount())):
+            status = self.table.item(row, COL_STATUS)
+            if self.table.isRowHidden(row) and status and status.text() == "完成":
+                self.table.removeRow(row)
+                removed = True
+        if not removed:
+            return
+        for row in range(self.table.rowCount()):
+            self._set_cell(row, COL_INDEX, str(row + 1))
+            self._set_locate_button(row)
 
     def _show_completion_dialog(self, summary: dict[str, int]) -> None:
         CompletionResultDialog(self, summary).exec()
@@ -2445,7 +2688,8 @@ class MainWindow(QMainWindow):
 
     def _update_status(self) -> None:
         ffmpeg_text = "FFmpeg 已就绪" if self.ffmpeg_dir else "未找到 FFmpeg，将尝试系统 PATH"
-        self.status_label.setText(f"{ffmpeg_text}｜队列: {self.table.rowCount()} 项")
+        visible_count = sum(not self.table.isRowHidden(row) for row in range(self.table.rowCount()))
+        self.status_label.setText(f"{ffmpeg_text}｜队列: {visible_count} 项")
 
 
 def main() -> int:

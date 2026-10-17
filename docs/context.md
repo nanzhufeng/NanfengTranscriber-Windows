@@ -5,7 +5,7 @@
 | 职责 | 唯一所有者 | 消费者/公开入口 |
 |---|---|---|
 | 产品名、版本、开发时间、仓库 | `app/assets/product.json` | `app/product_info.py`、关于窗口、Inno 构建 |
-| 两种转写模式、模型显示与旧值兼容 | `app/model_modes.py` | 主模式输入框、队列、转写会话 |
+| 两种本地/两种云端模式、模型显示与旧值兼容 | `app/model_modes.py` | 主模式输入框、队列、转写会话 |
 | 队列、QSettings、窗口与完成反馈 | `app/main.py` | 文件/文件夹/拖放、开始/停止、设置 |
 | 本地历史快照、筛选、编辑与删除边界 | `app/history.py` | 完成事件、历史页面；SQLite v1 |
 | 嵌入播放器、全屏、续播与画面内控件 | `app/media_player.py` | 历史核对页；复用 Qt Multimedia，不新增运行时 |
@@ -13,6 +13,9 @@
 | 单文件转写用例、输出命名、GPU 探测、字幕 | `app/transcriber.py` | Worker、已有结果检查、开发 QA CLI |
 | 独立进程与本地 JSON 协议 | `app/qwen_bridge.py` | Qwen 识别、快速模式精确对齐 |
 | Qwen 模型加载、识别与对齐 | `app/qwen_worker.py` | 独立 Python stdin/stdout；不依赖 Qt |
+| 百炼文件转写、任务恢复与协议校验 | `app/cloud_asr.py` | 转写 Session，复用原有导出/历史 |
+| Windows 用户加密 API Key | `app/cloud_credentials.py` | 设置与批次启动，不进入文稿/恢复文件 |
+| 后台文件发现与时长探测 | `app/media_probe.py` | 工作台添加文件，持久索引通知 |
 | 可选文本 API 与中文错误 | `app/postprocess.py` | TXT/Markdown/DOCX 的润色文本 |
 | 主环境/独立模型环境/打包工具版本 | 三份 `requirements*.txt` | 源码安装、运行环境安装、构建 |
 | 构建、安装与资源 | `scripts/build_windows_app.ps1`、`build_windows_installer_inno.ps1`、`installer/*.iss` | 当前 Windows 正式路径 |

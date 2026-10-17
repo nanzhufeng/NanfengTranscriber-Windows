@@ -1,13 +1,13 @@
-# 当前交接：v1.0.10 Windows
+# 当前交接：2026-10-17 v1.0.11 发布进行中
 
-事实入口：[PROJECT_STATUS.md](PROJECT_STATUS.md)、[CONTRACTS.md](CONTRACTS.md)、[发布收据](release-v1.0.10.json)。
+事实入口：[PROJECT_STATUS.md](PROJECT_STATUS.md)、[CONTRACTS.md](CONTRACTS.md)、[context.md](context.md)。旧已发布基线为v1.0.10/main f700b5a3f989e20d2faa2d876e0b706e2679bfe8；本轮待发布v1.0.11。
 
-本轮优化播放器三段双击、字幕固定/居中、圆角/橙色/柔和阴影及倍速居中，整理文稿和关闭入口。确认界面线程播放位置同步写盘会阻塞，改为单后台写者合并位置/音量保存；拖动75ms合并，松手立即跳转；字幕同文不重复排版，阴影按文字/尺寸/DPI缓存。
+包含：后台历史读写与卡片批次渲染、异步目录发现/时长探测、成功任务归档、两种手机版百炼模型、DPAPI密钥保护、白底框内眼睛、设置窗口拖动缩放及布局记忆、流程装饰图标移除。
 
-99项完整测试、23项发布合同和14项Windows交付检查通过。固定缓存build/dist_release_current；同负载独立QA AppId隔离安装/启动/卸载通过，843个文件逐一哈希匹配；安装后视频帧/进度/字幕有效，PS5环境验证CUDA True、离线受控中文转写45字并生成TXT/SRT。证据 `.runtime/qa/release-v110/`。
+- 复用build和dist_release_current，PyInstaller+Inno成功，短路径D:/ReleaseUploads/NanfengTranscriber-Windows-v1.0.11内安装包167122881字节；SHA256 df5ad9f6b2ed7090a75097d026088e85a63fbe1f054e40e88f64634e21e1a7a9，NotSigned。
+- 隔离QA AppId安装/启动/卸载、逐文件负载哈希、原生视频帧/进度/字幕、PowerShell5既有运行时和离线中文精确TXT/SRT通过。没有覆盖用户当前安装。
+- 当前构建真实截图已更新README，23项发布合同和14项Windows结构检查通过；116项完整测试通过（release-v111-tests-final.log），首轮因未生成截图/收据失败已补齐。
+- 下一步：显式提交本轮文件并推送main；创建v1.0.11正式Release，上传单Setup EXE并复核远端大小与摘要。上传慢可用20个8MiB草稿临时分片与已有assemble-release.yml校验组装，发布前自动移除分片。
+- 真实付费云端API未调用；协议仅模拟测试；全部编码/物理DPI与用户安装覆盖未验收。
 
-短路径安装包 `D:/ReleaseUploads/NanfengTranscriber-Windows-v1.0.10/NanfengTranscriber-Windows-v1.0.10-Setup.exe`，167080658字节，SHA-256 `0baaf1d7b5710c264e03eb5d84076f712509eeb7c1234a6a8f4ae59b0261c5b3`，NotSigned。[v1.0.10](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.10) 已正式发布，远端仅一个Setup EXE，大小和SHA-256已核对一致；应用源码/标签 `1ff18797d9df585e2ede68a386bfacdb206d181d`。
-
-未验证正式AppId覆盖用户安装、真实媒体准确率/API及全编码；持续未响应未复现，缩放/全屏仍有短暂绘制延迟。用户真实媒体、模型、设置和凭据不提交。`docs/ui-design-baseline.md`是其他任务原有未跟踪文件，保留不纳入。旧版本包/标签/收据不修改。
-
-传输复用 `tools/assemble_release.py` 和手动Actions，在草稿中校验分片、重组同一安装包、核对整体摘要、清理分片后正式发布。本次Actions `38884023046` 成功，20个临时远端分片已清理。
+保护所有WIP；docs/ui-design-baseline.md为其他任务未跟踪文件，不纳入。构建收据见[release-v1.0.11.json](release-v1.0.11.json)。源码入口[启动最新界面](../启动最新界面_Windows.bat)。

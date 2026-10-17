@@ -4,23 +4,23 @@
 
 ## 软件界面预览
 
-Windows v1.0.10 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
+Windows v1.0.11 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.10.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.11.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.10.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.11.png)
 
-![南枫转写 Windows 历史](docs/history-v1.0.10.png)
+![南枫转写 Windows 历史](docs/history-v1.0.11.png)
 
-![南枫转写 Windows 播放核对](docs/player-v1.0.10.png)
+![南枫转写 Windows 播放核对](docs/player-v1.0.11.png)
 
-## v1.0.10 更新
+## v1.0.11 更新
 
-- 优化播放器按钮响应，后台保存续播与音量，合并进度拖动请求。
-- 双击画面左侧后退、中间播放/暂停、右侧快进，沿用同侧连续跳转。
-- 当前字幕自动居中，手动滚动后延迟恢复跟随；画面字幕位置固定。
-- 播放器采用平滑圆角、橙色强调和透明背景的柔和文字阴影。
-- 精简文稿顶部与关闭入口，导出格式名称统一为 MD。
+- 新增高精度 Qwen 和低成本 Paraformer 云端转写，API Key 在设置中由 Windows 加密保存，上传前确认。
+- 历史查询、保存、文件夹发现和时长探测改为后台处理，减少点击卡顿。
+- 成功任务保存历史后自动从当前队列移除，失败项目保留。
+- 设置支持拖动、缩放并记住大小和位置；API 输入框内置显示／隐藏眼睛图标。
+- 精简操作流程图标，保持播放器橙色控制、字幕固定位置与柔和阴影。
 
 ## 功能
 
@@ -28,7 +28,7 @@ Windows v1.0.10 实际运行截图，主窗口 1600×1000；历史与播放器�
 - 历史视频核对采用画面内播放器：进度、音量、倍速、字幕及全屏统一布局，支持 10 秒跳转、控件自动隐藏与续播记忆；右侧字幕单击即可定位。
 
 - 批量添加视频、音频或整个文件夹，也支持拖放导入。
-- 两种本地转写模式：中文精确（Qwen3-ASR-1.7B）与通用快速（Whisper large-v3-turbo），默认中文精确。收起的输入框只显示中文名；展开下拉列表后，各选项在中文名下面显示实际模型名，悬停查看功能差异。
+- 两种本地转写模式：中文精确（Qwen3-ASR-1.7B）与通用快速（Whisper large-v3-turbo），默认中文精确；另提供高精度 Qwen（qwen-audio-3.1-asr-flash-filetrans）与低成本 Paraformer（paraformer-v2）。中文名称下面显示实际模型名，悬停查看功能差异。
 - 字幕使用固定 Qwen3-ForcedAligner-0.6B 对齐器：中文精确导出 SRT 时使用；通用快速可在设置开启“快速模式也使用精确字幕对齐”。总共两套识别权重和一套对齐权重。
 - 支持 GPU 快速和 CPU 稳定模式；GPU 环境不可用时可回退 CPU。
 - 同一批任务复用模型，GPU 模式支持批量推理和资源不足时逐级降级。
@@ -44,7 +44,7 @@ Windows v1.0.10 实际运行截图，主窗口 1600×1000；历史与播放器�
 
 ## Windows 安装
 
-从 GitHub Releases 下载 `NanfengTranscriber-Windows-v1.0.10-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
+从 [GitHub Releases](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.11) 下载 `NanfengTranscriber-Windows-v1.0.11-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 
@@ -70,6 +70,8 @@ python start.py
 Windows 也可双击 `启动南枫转写_Windows_源码测试.bat`。本地模型文件、日志、构建目录和安装包不会提交到 Git。
 
 ## 翻译与润色
+
+云端语音转写使用阿里云百炼北京服务，API Key 在设置中填写，默认遮挡，可点击眼睛查看；保存时由当前 Windows 用户加密保护。云端模型会上传音频并可能计费，每次批量开始前确认；本地模式继续在本地处理。云端协议和异常恢复已用模拟接口验证，真实付费服务尚未验证。
 
 “翻译润色”是可选的联网能力，需要配置 `NANZHU_TEXT_API_KEY` 或 `OPENAI_API_KEY`。未配置密钥时默认关闭；若手动开启，软件会提示缺少 API 并阻止开始，取消勾选后可只做本地转写。联网润色发送文字和文件标题，不上传音视频文件。
 

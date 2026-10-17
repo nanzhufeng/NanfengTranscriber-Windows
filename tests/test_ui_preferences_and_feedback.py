@@ -80,12 +80,75 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             dialog.close()
             window.close()
 
+    def test_settings_geometry_survives_cancel_and_reopen_and_header_drags(self):
+        from PySide6.QtCore import QPoint, Qt
+        from PySide6.QtGui import QWindow
+        from PySide6.QtTest import QTest
+        with TemporaryDirectory() as temp_dir:
+            path = str(Path(temp_dir) / "settings.ini")
+            settings = QSettings(path, QSettings.IniFormat)
+            window = main.MainWindow(settings=settings)
+            def create():
+                return main.AppSettingsDialog(window, completion_sound=False, completion_dialog=False, auto_open_output=False)
+            first = create()
+            first.show()
+            self.app.processEvents()
+            first.resize(710, 440)
+            first.move(25, 35)
+            self.app.processEvents()
+            expected = first.geometry()
+            with patch.object(QWindow, "startSystemMove", return_value=True) as move:
+                QTest.mouseClick(first._drag_widget, Qt.LeftButton, pos=QPoint(200, 10))
+                move.assert_called_once()
+            first.reject()
+            settings.sync()
+            window.settings = QSettings(path, QSettings.IniFormat)
+            second = create()
+            second.show()
+            self.app.processEvents()
+            self.assertEqual(second.geometry(), expected)
+            second.accept()
+            third = create()
+            third.show()
+            self.app.processEvents()
+            self.assertEqual(third.geometry(), expected)
+            third.close()
+            window.close()
+
+    def test_saved_cloud_key_fills_input_and_inline_eye_toggles_visibility(self):
+        import os
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from app.cloud_credentials import save_api_key
+        with TemporaryDirectory() as temp_dir, patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}):
+            settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
+            save_api_key(settings, "qa-example-key")
+            window = main.MainWindow(settings=settings)
+            dialog = main.AppSettingsDialog(window, completion_sound=False, completion_dialog=False, auto_open_output=False)
+            dialog.show()
+            self.app.processEvents()
+            edit = dialog.cloud_key_edit
+            self.assertEqual(edit.text(), "qa-example-key")
+            self.assertEqual(edit.echoMode(), main.QLineEdit.Password)
+            button = edit.findChild(main.QToolButton)
+            self.assertIsNotNone(button)
+            self.assertFalse(button.icon().isNull())
+            self.assertGreater(button.geometry().center().x(), edit.width() / 2)
+            QTest.mouseClick(button, Qt.LeftButton)
+            self.assertEqual(edit.echoMode(), main.QLineEdit.Normal)
+            self.assertEqual(button.accessibleName(), "隐藏 API Key")
+            QTest.mouseClick(button, Qt.LeftButton)
+            self.assertEqual(edit.echoMode(), main.QLineEdit.Password)
+            self.assertEqual(edit.text(), "qa-example-key")
+            dialog.reject()
+            window.close()
+
     def test_mode_input_has_two_line_model_metadata_and_no_page_explanation(self):
         with TemporaryDirectory() as temp_dir:
             settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
             settings.setValue("transcription/model", "medium")
             window = main.MainWindow(settings)
-            self.assertEqual(window.model_combo.count(), 2)
+            self.assertEqual(window.model_combo.count(), 4)
             self.assertEqual(window.model_combo.currentText(), "通用快速")
             self.assertEqual(window.model_combo.currentData(), "Whisper large-v3-turbo")
             window.model_combo.setCurrentText("中文精确")
