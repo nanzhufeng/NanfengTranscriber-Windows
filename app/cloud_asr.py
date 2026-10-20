@@ -15,9 +15,10 @@ from .model_modes import CLOUD_MODELS as MODELS
 
 
 class CloudAsrError(RuntimeError):
-    def __init__(self, message, status=None):
+    def __init__(self, message, status=None, code=None):
         super().__init__(message)
         self.status = status
+        self.code = code
 
 
 class NoRedirect(request.HTTPRedirectHandler):
@@ -39,6 +40,8 @@ class DashScopeClient:
     def __init__(self, key, cancel=lambda: False):
         self.key, self.cancel = key, cancel
         self.opener = request.build_opener(NoRedirect())
+        self.request_attempted = False
+        self.usage = {}
 
     def check_cancel(self):
         if self.cancel():
@@ -52,6 +55,7 @@ class DashScopeClient:
         body = json.dumps(payload).encode() if payload is not None else None
         req = request.Request(BASE + path, data=body, headers=h)
         try:
+            self.request_attempted = True
             with self.opener.open(req, timeout=20) as response:
                 raw = response.read(16 * 1024 * 1024 + 1)
             if len(raw) > 16 * 1024 * 1024:
@@ -93,6 +97,7 @@ class DashScopeClient:
             "Content-Type": "multipart/form-data; boundary=" + boundary,
             "Content-Length": str(len(prefix) + audio.stat().st_size + len(suffix))})
         try:
+            self.request_attempted = True
             with self.opener.open(req, timeout=30) as response:
                 response.read(1024)
         except (error.URLError, OSError):
@@ -111,7 +116,7 @@ class DashScopeClient:
         output = data.get("output", {})
         task_id = output.get("task_id", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", task_id) or output.get("task_status") not in {"PENDING", "RUNNING", "SUCCEEDED"}:
-            raise CloudAsrError("云端提交结果未确认，请核对百炼任务记录，避免重复计费。")
+            raise CloudAsrError("云端提交结果未确认，请核对百炼任务记录，避免重复计费。", code="FILETRANS_SUBMISSION_UNCERTAIN")
         return task_id
 
     def result(self, url):
@@ -119,6 +124,7 @@ class DashScopeClient:
             raise CloudAsrError("百炼结果地址无效，已停止读取。")
         self.check_cancel()
         try:
+            self.request_attempted = True
             with self.opener.open(request.Request(url), timeout=20) as response:
                 raw = response.read(16 * 1024 * 1024 + 1)
             if len(raw) > 16 * 1024 * 1024:
@@ -146,7 +152,7 @@ def parse_transcript(data):
     return result
 
 
-def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_interval=2):
+def _transcribe_cloud(audio, options, progress, cancelled, client=None, poll_interval=2):
     model = MODELS[options.model_size]
     if not options.cloud_api_key.strip():
         raise CloudAsrError("未配置百炼 API Key，请在设置中填写后重试。")
@@ -188,6 +194,8 @@ def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_inte
             if exc.status and 400 <= exc.status < 500:
                 state = {}
                 save()
+            else:
+                exc.code = "FILETRANS_SUBMISSION_UNCERTAIN"
             raise
         state = {"task_id": task_id, "model": model}
         save()
@@ -199,7 +207,7 @@ def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_inte
             if exc.status == 404:
                 state = {}
                 save()
-                raise CloudAsrError("云端任务已过期；再次重试将重新提交，可能再次计费。") from None
+                raise CloudAsrError("云端任务已过期；再次重试将重新提交，可能再次计费。", code="FILETRANS_TASK_EXPIRED") from None
             raise
         output = response.get("output", {})
         if output.get("task_id") != state["task_id"]:
@@ -219,6 +227,7 @@ def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_inte
             usage = response.get("usage", {})
             usage = {k: usage[k] for k in ("duration", "input_tokens", "output_tokens", "total_tokens")
                      if isinstance(usage.get(k), (int, float)) and 0 <= usage[k] < float("inf")}
+            client.usage = usage
             state.update(segments=segments, usage=usage)
             save()
             return segments
@@ -229,4 +238,47 @@ def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_inte
         while time.monotonic() < until:
             client.check_cancel()
             time.sleep(min(.1, max(0, until - time.monotonic())))
-    raise CloudAsrError("云端转写等待超时，请稍后重试以恢复已有任务。")
+    raise CloudAsrError("云端转写等待超时，请稍后重试以恢复已有任务。", code="FILETRANS_POLL_TIMEOUT")
+
+
+def transcribe_cloud(audio, options, progress, cancelled, client=None, poll_interval=2):
+    from .transcriber import TranscribeStopped
+    from .invocations import InvocationRecord, InvocationStore, estimate_cost
+    client = client or DashScopeClient(options.cloud_api_key, cancelled or (lambda: False))
+    client.request_attempted, client.usage = False, {}
+    started = time.monotonic()
+    status, failure = "SUCCEEDED", None
+    try:
+        segments = _transcribe_cloud(audio, options, progress, cancelled, client, poll_interval)
+        # Preserve the completed checkpoint for a later retry, but honor Stop
+        # received while the final response was blocked in the network stack.
+        client.check_cancel()
+        return segments
+    except TranscribeStopped:
+        status = "CANCELLED"
+        raise
+    except Exception as exc:
+        status = "FAILED"
+        failure = getattr(exc, "code", None) or (f"FILETRANS_HTTP_{exc.status}" if getattr(exc, "status", None) else "FILETRANS_FAILED")
+        raise
+    finally:
+        if client.request_attempted and status != "CANCELLED" and options.cloud_state_dir:
+            try:
+                usage = client.usage
+                token = lambda key: int(usage[key]) if key in usage else None
+                incoming, outgoing = token("input_tokens"), token("output_tokens")
+                total = incoming + outgoing if incoming is not None and outgoing is not None else None
+                millis = int(usage.get("duration", 0) * 1000)
+                model = MODELS[options.model_size]
+                version, currency, cost = estimate_cost(model, incoming, outgoing, millis)
+                InvocationStore(Path(options.cloud_state_dir).parent).record(InvocationRecord(
+                    id=uuid4().hex, task_id=options.invocation_task_id,
+                    source_display_name=options.source_display_name or Path(audio).name,
+                    provider_id="QWEN" if model.startswith("qwen") else "PARAFORMER", model_id=model,
+                    completed_at_millis=int(time.time() * 1000), duration_millis=int((time.monotonic()-started)*1000),
+                    request_count=1, billable_audio_millis=millis, status=status, input_tokens=incoming,
+                    output_tokens=outgoing, total_tokens=total, cost_price_version=version,
+                    cost_currency_code=currency, estimated_cost_micros=cost, error_code=failure))
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning("云端调用记录未能保存；转写结果不受影响。")

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import unittest
+import time
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from PySide6.QtCore import QSettings
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from app import main
@@ -44,6 +46,12 @@ class FrozenRuntimeTests(unittest.TestCase):
             self.assertFalse(transcriber._dll_exists_in_path({"cublas64_12.dll"}))
             find_spec.assert_not_called()
 
+    def test_cpu_only_source_runtime_treats_missing_nvidia_namespace_as_unavailable(self):
+        with patch("app.transcriber._is_frozen_runtime", return_value=False), patch(
+            "app.transcriber.importlib.util.find_spec", side_effect=ModuleNotFoundError("nvidia")
+        ), patch.dict(os.environ, {"PATH": ""}):
+            self.assertFalse(transcriber.gpu_libraries_available({"cublas64_12.dll"}))
+
     def test_start_reaches_worker_in_frozen_runtime(self) -> None:
         with TemporaryDirectory() as temp_dir:
             settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
@@ -55,6 +63,10 @@ class FrozenRuntimeTests(unittest.TestCase):
                 window, "_start_worker"
             ) as start_worker:
                 window._start()
+                deadline = time.monotonic() + 5
+                while not start_worker.called and time.monotonic() < deadline:
+                    QTest.qWait(10)
+                    time.sleep(.001)
 
             start_worker.assert_called_once()
             items, options = start_worker.call_args.args

@@ -16,6 +16,35 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+    def wait_for_invocation_reads(self, window):
+        from time import monotonic
+        from PySide6.QtTest import QTest
+        from app.invocation_ui import InvocationEntry
+        entries = window.findChildren(InvocationEntry)
+        deadline = monotonic() + 3
+        while any(entry._job is not None for entry in entries) and monotonic() < deadline:
+            QTest.qWait(10)
+        self.assertTrue(all(entry._job is None for entry in entries),
+                        "设置关闭后的后台调用记录查询尚未释放临时数据库")
+
+    def wait_for_popup(self, combo):
+        from time import monotonic
+        from PySide6.QtTest import QTest
+        deadline = monotonic() + 1
+        while not combo.view().isVisible() and monotonic() < deadline:
+            QTest.qWait(10)
+        self.assertTrue(combo.view().isVisible(), f"{combo.currentText()} popup did not become visible")
+
+    def close_and_drain_window(self, window):
+        from time import monotonic
+        from PySide6.QtTest import QTest
+        window.close()
+        deadline = monotonic() + 3
+        while not window._closing and monotonic() < deadline:
+            QTest.qWait(10)
+        self.assertTrue(window._closing)
+        self.assertFalse(window.isVisible())
+
     def test_top_level_options_persist_across_restart(self) -> None:
         with TemporaryDirectory() as temp_dir:
             settings_path = Path(temp_dir) / "settings.ini"
@@ -113,6 +142,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.app.processEvents()
             self.assertEqual(third.geometry(), expected)
             third.close()
+            self.wait_for_invocation_reads(window)
             window.close()
 
     def test_saved_cloud_key_fills_input_and_inline_eye_toggles_visibility(self):
@@ -141,6 +171,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertEqual(edit.echoMode(), main.QLineEdit.Password)
             self.assertEqual(edit.text(), "qa-example-key")
             dialog.reject()
+            self.wait_for_invocation_reads(window)
             window.close()
 
     def test_mode_input_has_two_line_model_metadata_and_no_page_explanation(self):
@@ -176,6 +207,7 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             self.assertFalse(dialog.values()["completion_sound"])
             dialog.reject()
             self.assertTrue(window.completion_sound_enabled)
+            self.wait_for_invocation_reads(window)
             window.close()
 
     def test_mode_language_and_runtime_popups_toggle_repeatedly(self):
@@ -186,33 +218,86 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             window = main.MainWindow(QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
             window.show()
             self.app.processEvents()
-            for combo in (window.model_combo, window.language_combo, window.compute_mode_combo):
-                trigger = combo.lineEdit() if combo.isEditable() else combo
-                for _ in range(3):
+            try:
+                for combo in (window.model_combo, window.language_combo, window.compute_mode_combo):
+                    trigger = combo.lineEdit() if combo.isEditable() else combo
+                    for _ in range(3):
+                        QTest.mouseClick(trigger, Qt.LeftButton)
+                        self.wait_for_popup(combo)
+                        # Native Qt popup owns mouse capture; the second click is
+                        # delivered to that window at the original trigger position.
+                        popup = combo.view().window()
+                        position = popup.mapFromGlobal(trigger.mapToGlobal(trigger.rect().center()))
+                        QTest.mouseClick(popup, Qt.LeftButton, pos=position)
+                        self.app.processEvents()
+                        self.assertFalse(combo.view().isVisible())
                     QTest.mouseClick(trigger, Qt.LeftButton)
-                    self.app.processEvents()
-                    self.assertTrue(combo.view().isVisible(), f"{combo.currentText()} cycle {_}")
-                    # Native Qt popup owns mouse capture; the second click is
-                    # delivered to that window at the original trigger position.
-                    popup = combo.view().window()
-                    position = popup.mapFromGlobal(trigger.mapToGlobal(trigger.rect().center()))
-                    QTest.mouseClick(popup, Qt.LeftButton, pos=position)
+                    self.wait_for_popup(combo)
+                    QTest.keyClick(combo.view(), Qt.Key_Escape)
                     self.app.processEvents()
                     self.assertFalse(combo.view().isVisible())
-                QTest.mouseClick(trigger, Qt.LeftButton)
-                QTest.keyClick(combo.view(), Qt.Key_Escape)
-                self.app.processEvents()
-                self.assertFalse(combo.view().isVisible())
-                QTest.mouseClick(trigger, Qt.LeftButton)
-                self.assertTrue(combo.view().isVisible())
-                QTest.keyClick(combo.view(), Qt.Key_Down)
-                QTest.keyClick(combo.view(), Qt.Key_Return)
-                self.app.processEvents()
-                self.assertFalse(combo.view().isVisible())
-                QTest.mouseClick(combo, Qt.LeftButton, pos=QPoint(combo.width() - 10, combo.height() // 2))
-                self.assertTrue(combo.view().isVisible())
-                combo.hidePopup()
-            window.close()
+                    QTest.mouseClick(trigger, Qt.LeftButton)
+                    self.wait_for_popup(combo)
+                    QTest.keyClick(combo.view(), Qt.Key_Down)
+                    QTest.keyClick(combo.view(), Qt.Key_Return)
+                    self.app.processEvents()
+                    self.assertFalse(combo.view().isVisible())
+                    QTest.mouseClick(combo, Qt.LeftButton, pos=QPoint(combo.width() - 10, combo.height() // 2))
+                    self.wait_for_popup(combo)
+                    combo.hidePopup()
+            finally:
+                self.close_and_drain_window(window)
+
+    def test_combo_global_filter_only_runs_while_popup_is_open(self):
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtTest import QTest
+        with TemporaryDirectory() as temp_dir:
+            window = main.MainWindow(QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat))
+            window.show()
+            self.app.processEvents()
+            try:
+                for combo in (window.model_combo, window.language_combo, window.compute_mode_combo):
+                    with patch.object(combo, "filter_trigger_click", wraps=combo.filter_trigger_click) as filter_call:
+                        QApplication.sendEvent(window, QEvent(QEvent.User))
+                        filter_call.assert_not_called()
+                        combo.showPopup()
+                        self.wait_for_popup(combo)
+                        filter_call.reset_mock()
+                        QApplication.sendEvent(window, QEvent(QEvent.User))
+                        self.assertGreater(filter_call.call_count, 0)
+                        combo.hidePopup()
+                        filter_call.reset_mock()
+                        QApplication.sendEvent(window, QEvent(QEvent.User))
+                        filter_call.assert_not_called()
+                        # A consumed popup press must not require a later global release
+                        # event to permit opening the trigger again.
+                        trigger = combo.lineEdit() if combo.isEditable() else combo
+                        QTest.mouseClick(trigger, Qt.LeftButton)
+                        self.wait_for_popup(combo)
+                        popup = combo.view().window()
+                        point = popup.mapFromGlobal(trigger.mapToGlobal(trigger.rect().center()))
+                        QTest.mousePress(popup, Qt.LeftButton, pos=point)
+                        self.assertFalse(combo.view().isVisible())
+                        QTest.mouseClick(trigger, Qt.LeftButton)
+                        self.wait_for_popup(combo)
+                        combo.hidePopup()
+                        combo.setFocus()
+                        QTest.keyClick(combo, Qt.Key_F4)
+                        self.wait_for_popup(combo)
+                        QTest.keyClick(combo.view(), Qt.Key_Escape)
+                        self.assertFalse(combo.view().isVisible())
+                        filter_call.reset_mock()
+                        QApplication.sendEvent(window, QEvent(QEvent.User))
+                        filter_call.assert_not_called()
+                        combo.showPopup()
+                        self.wait_for_popup(combo)
+                        QTest.keyClick(combo.view(), Qt.Key_Return)
+                        self.assertFalse(combo.view().isVisible())
+                        filter_call.reset_mock()
+                        QApplication.sendEvent(window, QEvent(QEvent.User))
+                        filter_call.assert_not_called()
+            finally:
+                self.close_and_drain_window(window)
 
     def test_queue_header_fills_shared_outline_including_scrollbar_gap(self):
         from PySide6.QtWidgets import QHeaderView
@@ -335,13 +420,17 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
             window.close()
 
     def test_completion_sound_respects_user_switch(self) -> None:
+        from threading import Event
         with TemporaryDirectory() as temp_dir:
             settings = QSettings(str(Path(temp_dir) / "settings.ini"), QSettings.IniFormat)
             window = main.MainWindow(settings=settings)
             window.completion_sound_enabled = True
             with patch("app.main.sys.platform", "win32"), patch("app.main.winsound") as mocked_winsound:
                 mocked_winsound.SND_MEMORY = 4
+                played = Event()
+                mocked_winsound.PlaySound.side_effect = lambda *_: played.set()
                 window._play_completion_sound({"success": 1, "failed": 0, "no_text": 0})
+                self.assertTrue(played.wait(1))
             mocked_winsound.PlaySound.assert_called_once()
             payload = mocked_winsound.PlaySound.call_args.args[0]
             self.assertTrue(payload.startswith(b"RIFF"))
@@ -366,10 +455,10 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 window._add_row(source)
 
             self.assertIsNotNone(window.table.cellWidget(0, main.COL_LOCATE))
-            self.assertEqual(window._locate_target_for_row(0), source.resolve())
+            self.assertTrue(window._locate_target_for_row(0).samefile(source))
             window._update_output_cell(0, str(output.parent), output)
-            self.assertEqual(window._locate_target_for_row(0), output.resolve())
-            self.assertEqual(window._generated_output_target_for_row(0), output.resolve())
+            self.assertTrue(window._locate_target_for_row(0).samefile(output))
+            self.assertTrue(window._generated_output_target_for_row(0).samefile(output))
             window.close()
 
     def test_completion_auto_locate_uses_latest_generated_output(self) -> None:
@@ -395,10 +484,12 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
 
             window._on_all_done()
 
-            self.assertEqual(window.pending_completion_target, latest_output.resolve())
+            self.assertTrue(window.pending_completion_target.samefile(latest_output))
             window.close()
 
     def test_windows_locate_uses_explorer_select_with_a_separate_path_argument(self) -> None:
+        from time import monotonic
+        from PySide6.QtTest import QTest
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / "含 空格 的源文件.mp4"
@@ -409,7 +500,14 @@ class UiPreferencesAndFeedbackTests(unittest.TestCase):
                 window._add_row(source)
             with patch("app.main.sys.platform", "win32"), patch("app.main.subprocess.Popen") as popen:
                 window._locate_row_file(0)
-            popen.assert_called_once_with(["explorer.exe", "/select,", str(source.resolve())])
+                deadline = monotonic() + 3
+                while window._io_jobs and monotonic() < deadline:
+                    QTest.qWait(10)
+                self.assertFalse(window._io_jobs)
+            popen.assert_called_once()
+            args = popen.call_args.args[0]
+            self.assertEqual(args[:2], ["explorer.exe", "/select,"])
+            self.assertTrue(Path(args[2]).samefile(source))
             window.close()
 
     def test_completion_feedback_shows_separate_status_counts(self) -> None:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import unittest
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from PySide6.QtCore import QSettings
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app import main
@@ -51,6 +53,10 @@ class ExistingOutputFlowTests(unittest.TestCase):
                 patch.object(QMessageBox, "question", return_value=QMessageBox.No),
             ):
                 window._start()
+                deadline = time.monotonic() + 5
+                while not start_worker.called and time.monotonic() < deadline:
+                    QTest.qWait(10)
+                    time.sleep(.001)
 
             start_worker.assert_called_once()
             remaining_items = start_worker.call_args.args[0]

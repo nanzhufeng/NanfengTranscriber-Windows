@@ -121,9 +121,11 @@ def polish_to_simplified_chinese(
     chunks = _split_text(source_text)
     polished: list[str] = []
     total = len(chunks)
+    # Imported at the call boundary to avoid the transcriber/postprocess cycle.
+    from .transcriber import TranscribeStopped
     for index, chunk in enumerate(chunks, start=1):
         if cancel_callback and cancel_callback():
-            raise RuntimeError("用户已停止翻译润色。")
+            raise TranscribeStopped("用户已停止翻译润色。")
         progress_callback(
             {
                 "status": "polishing",
@@ -132,5 +134,8 @@ def polish_to_simplified_chinese(
                 "notice": f"正在翻译润色《{title}》：{index}/{total}",
             }
         )
-        polished.append(_request_chat_completion(prompt, chunk))
+        result = _request_chat_completion(prompt, chunk)
+        if cancel_callback and cancel_callback():
+            raise TranscribeStopped("用户已停止翻译润色。")
+        polished.append(result)
     return "\n\n".join(part for part in polished if part.strip())

@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "authority": "docs/CONTRACTS.md",
+  "documents": [
+    {
+      "path": "AGENTS.md",
+      "role": "policy"
+    },
+    {
+      "path": "docs/chatgpt-project-context.md",
+      "role": "route"
+    },
+    {
+      "path": "docs/context.md",
+      "role": "architecture"
+    },
+    {
+      "path": "docs/contract-audit.md",
+      "role": "audit"
+    },
+    {
+      "path": "docs/CONTRACTS.md",
+      "role": "authority"
+    },
+    {
+      "path": "docs/CURRENT_HANDOFF.md",
+      "role": "handoff"
+    },
+    {
+      "path": "docs/development-experience-audit.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/history/contract-audit-v1.0.6.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/HISTORY.md",
+      "role": "history-index"
+    },
+    {
+      "path": "docs/MAC_CODEX_START_PROMPT.md",
+      "role": "planned"
+    },
+    {
+      "path": "docs/PROJECT_STATUS.md",
+      "role": "status"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.0.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.1.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.2.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.3.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.4.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.7.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/RELEASE_NOTES_v1.0.8.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-15-transcription-performance-optimization.md",
+      "role": "historical"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-15-transcription-performance-optimization-design.md",
+      "role": "historical"
+    },
+    {
+      "path": "README.md",
+      "role": "guide"
+    },
+    {
+      "path": "tests/ui_baselines/windows/README.md",
+      "role": "historical"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "C01",
+      "owners": [
+        "app/main.py:MainWindow._start",
+        "app/main.py:TranscribeWorker",
+        "app/main.py:MainWindow._history_saved",
+        "app/main.py:MainWindow._start_after_preflight",
+        "app/main.py:MainWindow.closeEvent"
+      ],
+      "tests": [
+        "tests/test_transcribe_worker.py",
+        "tests/test_existing_outputs.py",
+        "tests/test_history.py",
+        "tests/test_preflight_responsiveness.py",
+        "tests/test_ui_responsiveness.py"
+      ]
+    },
+    {
+      "id": "C02",
+      "owners": [
+        "app/model_modes.py:model_for_mode"
+      ],
+      "tests": [
+        "tests/test_local_modes.py",
+        "tests/test_ui_preferences_and_feedback.py"
+      ]
+    },
+    {
+      "id": "C03",
+      "owners": [
+        "app/cloud_asr.py:transcribe_cloud",
+        "app/invocations.py:InvocationStore",
+        "app/invocations.py:estimate_cost",
+        "app/invocation_ui.py:InvocationHistoryDialog",
+        "app/cloud_credentials.py:read_api_key",
+        "app/main.py:MainWindow._start"
+      ],
+      "tests": [
+        "tests/test_cloud_asr.py",
+        "tests/test_invocations.py",
+        "tests/test_invocation_ui.py"
+      ]
+    },
+    {
+      "id": "C04",
+      "owners": [
+        "app/main.py:AppSettingsDialog",
+        "app/main.py:MainWindow._save_settings",
+        "app/settings_io.py:AsyncSettings"
+      ],
+      "tests": [
+        "tests/test_ui_preferences_and_feedback.py",
+        "tests/test_ui_responsiveness.py",
+        "tests/test_dialog_lifecycle.py"
+      ]
+    },
+    {
+      "id": "C05",
+      "owners": [
+        "app/transcriber.py:resolve_output_directory",
+        "app/transcriber.py:transcribe_file"
+      ],
+      "tests": [
+        "tests/test_transcriber_outputs.py",
+        "tests/test_existing_outputs.py"
+      ]
+    },
+    {
+      "id": "C06",
+      "owners": [
+        "app/history_ui.py:HistoryReadJob",
+        "app/history_ui.py:HistorySaveJob",
+        "app/media_probe.py:DurationProbe",
+        "app/ui_io.py:IoJob",
+        "app/history_ui.py:HistoryPage.background_action",
+        "app/history_ui.py:HistoryPage.begin_shutdown",
+        "app/history_ui.py:DocumentEditor.load_text",
+        "app/dependency_install.py:DependencyInstallWorker",
+        "app/background_feedback.py:enqueue_log"
+      ],
+      "tests": [
+        "tests/test_async_ui_io.py",
+        "tests/test_history.py",
+        "tests/test_history_responsiveness.py",
+        "tests/test_preflight_responsiveness.py",
+        "tests/test_ui_responsiveness.py",
+        "tests/test_file_navigation_responsiveness.py",
+        "tests/test_dependency_install.py",
+        "tests/test_background_feedback.py",
+        "tests/test_dialog_lifecycle.py"
+      ]
+    },
+    {
+      "id": "C07",
+      "owners": [
+        "app/transcriber.py:TranscriptionSession",
+        "app/qwen_bridge.py:runtime_ready",
+        "scripts/setup_qwen_runtime.ps1",
+        "app/transcriber.py:_extract_audio",
+        "app/qwen_bridge.py:QwenWorker"
+      ],
+      "tests": [
+        "tests/test_transcription_session.py",
+        "tests/test_qwen_runtime_setup.py",
+        "tests/test_frozen_runtime.py",
+        "tests/test_runtime_lifecycle.py"
+      ]
+    },
+    {
+      "id": "C08",
+      "owners": [
+        "app/postprocess.py",
+        "app/main.py:MainWindow._debug_log"
+      ],
+      "tests": [
+        "tests/test_postprocess.py"
+      ]
+    },
+    {
+      "id": "C09",
+      "owners": [
+        "app/history.py:HistoryStore",
+        "app/history_ui.py:HistoryPage",
+        "app/history.py:HistoryStore.query_cards"
+      ],
+      "tests": [
+        "tests/test_history.py",
+        "tests/test_history_responsiveness.py"
+      ]
+    },
+    {
+      "id": "C10",
+      "owners": [
+        "app/media_player.py:MediaPlayer",
+        "app/transcriber.py:history_subtitle_cues"
+      ],
+      "tests": [
+        "tests/test_media_player.py",
+        "tests/test_history.py",
+        "tests/test_history_responsiveness.py"
+      ]
+    },
+    {
+      "id": "C11",
+      "owners": [
+        "app/main.py:MainWindow._build_ui",
+        "app/ui_icons.py"
+      ],
+      "tests": [
+        "tests/test_ui_preferences_and_feedback.py",
+        "tests/test_ui_baselines.py"
+      ]
+    },
+    {
+      "id": "C12",
+      "owners": [
+        "app/assets/product.json",
+        "app/product_info.py",
+        "scripts/build_windows_app.ps1",
+        "build_windows_installer_inno.ps1",
+        "installer/NanfengTranscriber-Windows.iss"
+      ],
+      "tests": [
+        "tests/test_project_contracts.py",
+        "tests/test_inno_installer.py"
+      ]
+    }
+  ],
+  "local_drafts": [
+    {
+      "path": "docs/ui-design-baseline.md",
+      "reason": "原有其他任务未跟踪的v1.0.7设计说明；只读核对，未激活为当前合同，不修改或纳入本轮。"
+    }
+  ],
+  "legacy_entrypoints": [
+    "build_windows_installer.ps1",
+    "installer/install.ps1",
+    "installer/install.cmd"
+  ],
+  "immutable_evidence": [
+    "docs/release-v*.json",
+    "tests/ui_baselines/windows/manifest.json",
+    "tests/ui_baselines/windows/*.png",
+    "docs/superpowers/benchmarks/*.json"
+  ]
+}

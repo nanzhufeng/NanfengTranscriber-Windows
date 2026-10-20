@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,14 +32,10 @@ class FakeSession:
 
 class FailedFfmpegProcess:
     def __init__(self, stderr: bytes) -> None:
-        self.stderr = stderr
+        self.stderr = io.BytesIO(stderr)
 
     def poll(self) -> int:
         return 1
-
-    def communicate(self) -> tuple[bytes, bytes]:
-        return b"", self.stderr
-
 
 class TranscribeFileOutputTests(unittest.TestCase):
     def test_srt_long_segment_is_short_and_sequential(self):

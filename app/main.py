@@ -13,6 +13,7 @@ from datetime import datetime
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 try:
     import winsound
@@ -74,6 +75,7 @@ from .transcriber import (
 
 from .model_modes import MODE_OPTIONS, MODE_MODEL_LABELS, mode_description, model_for_mode
 from .product_info import APP_NAME, APP_VERSION, APP_DEVELOPED_AT, GITHUB_REPOSITORY, GITHUB_REPOSITORY_URL
+from .dependency_install import DependencyInstallWorker
 SUPPORTED_EXTENSIONS = {
     ".mp4",
     ".mov",
@@ -130,6 +132,7 @@ COL_OUTPUT = 10
 COL_LOCATE = 11
 
 SOURCE_PATH_ROLE = Qt.UserRole
+INVOCATION_TASK_ID_ROLE = Qt.UserRole + 3
 OUTPUT_FILE_ROLE = Qt.UserRole + 1
 HISTORY_ID_ROLE = Qt.UserRole + 2
 
@@ -553,6 +556,13 @@ class AppSettingsDialog(QDialog):
         cloud_box.addWidget(self.cloud_key_clear)
         hint(cloud_box, "密钥仅由当前 Windows 用户加密保存；使用云端模型会上传音频并可能计费。")
         body.addWidget(cloud)
+        from .invocation_ui import InvocationEntry
+        records, records_box = section("调用记录", "history")
+        hint(records_box, "按完整文件记录云端转写；后台分段不会单独显示。不会保存 API Key、音频或转写内容。")
+        self.invocation_entry = InvocationEntry(parent.history_store.root, self)
+        self.invocation_entry.setIcon(parent._configuration_icon("history", "#667782"))
+        records_box.addWidget(self.invocation_entry)
+        body.addWidget(records)
         lower = QHBoxLayout()
         lower.setSpacing(12)
         subtitles, subtitles_box = section("字幕处理", "file")
@@ -648,7 +658,11 @@ class AppSettingsDialog(QDialog):
         super().done(result)
 
     def _open_about(self) -> None:
-        AboutDialog(self).exec()
+        dialog = AboutDialog(self)
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
 
     def values(self) -> dict[str, bool]:
         return {
@@ -663,11 +677,23 @@ class AppSettingsDialog(QDialog):
 
 class ComboTriggerFilter(QObject):
     def __init__(self, combo):
+        from weakref import ref
         super().__init__(combo)
-        self.combo = combo
+        self._combo_ref = ref(combo)
 
     def eventFilter(self, watched, event):
-        return self.combo.filter_trigger_click(event)
+        combo = self._combo_ref()
+        if combo is None:
+            return False
+        # Windows can defer Show until its native roll animation completes.
+        # Escape/selection can also hide this widget without hidePopup().
+        if event.type() in (QEvent.Show, QEvent.Hide) and watched is combo.view().window():
+            if event.type() == QEvent.Show:
+                combo._install_trigger_filter()
+            else:
+                combo._release_trigger_filter()
+            return False
+        return combo.filter_trigger_click(event)
 
 
 class ToggleComboBox(QComboBox):
@@ -675,8 +701,37 @@ class ToggleComboBox(QComboBox):
     def __init__(self):
         super().__init__()
         self._trigger_press_active = False
+        self._trigger_filter_installed = False
         self._trigger_filter = ComboTriggerFilter(self)
-        QApplication.instance().installEventFilter(self._trigger_filter)
+
+    def showPopup(self):
+        # A local filter is lazy and watches only this popup's lifecycle; queue
+        # rows never retain application-wide filters while their popup is shut.
+        self.view().window().installEventFilter(self._trigger_filter)
+        super().showPopup()
+
+    def _install_trigger_filter(self):
+        if not self._trigger_filter_installed:
+            QApplication.instance().installEventFilter(self._trigger_filter)
+            self._trigger_filter_installed = True
+
+    def hidePopup(self):
+        self._release_trigger_filter()
+        super().hidePopup()
+
+    def _release_trigger_filter(self):
+        if self._trigger_filter_installed:
+            QApplication.instance().removeEventFilter(self._trigger_filter)
+            self._trigger_filter_installed = False
+        self._trigger_press_active = False
+
+    def mouseReleaseEvent(self, event):
+        self._trigger_press_active = False
+        super().mouseReleaseEvent(event)
+
+    def hideEvent(self, event):
+        self._release_trigger_filter()
+        super().hideEvent(event)
 
     def filter_trigger_click(self, event):
         if event.type() == QEvent.MouseButtonRelease:
@@ -687,7 +742,6 @@ class ToggleComboBox(QComboBox):
                 and self.view().isVisible()
                 and self.rect().contains(self.mapFromGlobal(event.globalPosition().toPoint()))):
             self.hidePopup()
-            self._trigger_press_active = True
             event.accept()
             return True
         return False
@@ -719,7 +773,10 @@ class CenterComboBox(ToggleComboBox):
         self.lineEdit().installEventFilter(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if watched is self.lineEdit() and event.type() == QEvent.MouseButtonPress:
+        if watched is self.lineEdit() and event.type() == QEvent.MouseButtonRelease:
+            self._trigger_press_active = False
+        if (watched is self.lineEdit() and event.type() == QEvent.MouseButtonPress
+                and event.button() == Qt.LeftButton):
             self._toggle_popup()
             return True
         return super().eventFilter(watched, event)
@@ -878,6 +935,7 @@ class QueueItem:
     row: int
     model_size: str
     language: str
+    task_id: str = ""
 
 
 class TranscribeWorker(QObject):
@@ -893,6 +951,24 @@ class TranscribeWorker(QObject):
         self.items = items
         self.options = options
         self._cancel_requested = False
+        self._progress_time = 0.0
+        self._progress_status = None
+        self._pending_progress = None
+
+    def report_progress(self, row, info):
+        self._pending_progress = (row, info)
+        now = time.monotonic()
+        if (now - self._progress_time >= .1 or info.get("status") != self._progress_status
+                or info.get("force_cpu") or int(info.get("progress") or 0) >= 100):
+            self.flush_progress()
+
+    def flush_progress(self):
+        if self._pending_progress is not None:
+            row, info = self._pending_progress
+            self._pending_progress = None
+            self._progress_time = time.monotonic()
+            self._progress_status = info.get("status")
+            self.item_progress.emit(row, info)
 
     @Slot()
     def run(self) -> None:
@@ -904,26 +980,32 @@ class TranscribeWorker(QObject):
                 if self._cancel_requested:
                     break
                 self.item_started.emit(item.row)
-                item_options = replace(self.options, model_size=item.model_size, language=item.language)
+                item_options = replace(self.options, model_size=item.model_size, language=item.language,
+                                       invocation_task_id=item.task_id, source_display_name=item.path.name)
                 try:
                     result = transcribe_file(
                         item.path,
                         item_options,
-                        lambda info, row=item.row: self.item_progress.emit(row, info),
+                        lambda info, row=item.row: self.report_progress(row, info),
                         self.is_cancel_requested,
                         session=session,
                     )
                 except TranscribeStopped:
+                    self.flush_progress()
                     self.item_stopped.emit(item.row)
                     break
                 except Exception as exc:
+                    self.flush_progress()
                     detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
                     self.item_failed.emit(item.row, detail)
                 else:
+                    self.flush_progress()
                     self.item_finished.emit(item.row, result)
         finally:
-            session.close()
-            self.all_done.emit()
+            try:
+                session.close()
+            finally:
+                self.all_done.emit()
 
     def cancel(self) -> None:
         self._cancel_requested = True
@@ -932,43 +1014,11 @@ class TranscribeWorker(QObject):
         return self._cancel_requested
 
 
-class DependencyInstallWorker(QObject):
-    finished = Signal(bool, str)
-
-    @Slot()
-    def run(self) -> None:
-        requirements = Path(__file__).resolve().parents[1] / "requirements.txt"
-        command = [sys.executable, "-m", "pip", "install", "-r", str(requirements)]
-        startupinfo = None
-        creationflags = 0
-        if os.name == "nt":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=str(requirements.parent),
-                capture_output=True,
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-            )
-        except Exception as exc:
-            self.finished.emit(False, f"依赖安装启动失败：{exc}")
-            return
-        if completed.returncode == 0:
-            importlib.invalidate_caches()
-            self.finished.emit(True, "依赖安装完成。")
-            return
-        detail = (completed.stderr or completed.stdout or "未知错误").strip()
-        self.finished.emit(False, f"依赖安装失败：{detail[:500]}")
-
-
 class MainWindow(QMainWindow):
     def __init__(self, settings: QSettings | None = None) -> None:
         super().__init__()
-        self.settings = settings if settings is not None else QSettings("Nanzhufeng", "NanfengTranscriber")
+        from .settings_io import AsyncSettings
+        self.settings = AsyncSettings(settings if settings is not None else QSettings("Nanzhufeng", "NanfengTranscriber"))
         from .history import HistoryStore
         history_root = (Path(self.settings.fileName()).parent / "history") if settings is not None else Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NanfengTranscriber" / "history"
         self.history_store = HistoryStore(history_root)
@@ -977,8 +1027,14 @@ class MainWindow(QMainWindow):
         self._history_save_jobs = {}
         self._history_failed_ids = set()
         self._closing = False
+        self._close_requested = False
+        self._close_timer = QTimer(self)
+        self._close_timer.setInterval(50)
+        self._close_timer.timeout.connect(self._finish_close_when_ready)
         self._duration_jobs = {}
         self._import_job = None
+        self._io_jobs = {}
+        self._preflight_pending = False
         self.project_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
         self.ffmpeg_dir = find_ffmpeg_dir(self.project_root)
         self.runtime_log_path = self.project_root / "runtime-log.txt"
@@ -1007,6 +1063,8 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._restore_settings()
         self._connect_settings_signals()
+        self._pending_settings_notice = False
+        self.settings.write_finished.connect(self._settings_write_finished)
         self._apply_style()
         self._lock_add_button_widths()
         self._update_status()
@@ -1092,31 +1150,121 @@ class MainWindow(QMainWindow):
         self.settings.setValue("preferences/precision_subtitles", self.precision_subtitles)
         self.settings.sync()
 
+    @Slot(bool)
+    def _settings_write_finished(self, ok):
+        if self._closing or getattr(self.settings, "busy", False):
+            return
+        if not ok:
+            self.status_label.setText("设置保存失败，修改仍保留在本窗口。请检查磁盘和目录权限后重试。")
+            self._set_copy_tip("设置尚未保存", active=True)
+        elif self._pending_settings_notice:
+            self._pending_settings_notice = False
+            self._set_copy_tip("设置已保存", active=True)
+            QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
+
     def closeEvent(self, event) -> None:
-        if self.history_page is not None and not self.history_page.leave():
+        if self._closing:
+            super().closeEvent(event)
+            return
+        if self._close_requested:
             event.ignore()
             return
+        if self.history_page is not None and not self.history_page.leave(self.close):
+            event.ignore()
+            return
+        self._close_requested = True
         if self.history_page is not None:
-            self.history_page.shutdown()
-        self._closing = True
+            self.history_page.begin_shutdown()
+        if self.worker is not None:
+            self.worker.cancel()
+        if self.install_worker is not None:
+            self.install_worker.cancel()
         for job in self._duration_jobs.values():
             job.cancelled = True
         if self._import_job is not None:
             self._import_job.cancelled = True
+        for job, _ in self._io_jobs.values():
+            job.cancelled = True
         self._save_settings()
-        super().closeEvent(event)
+        if self._has_pending_shutdown():
+            event.ignore()
+            self.status_label.setText("正在停止任务并保存，请稍候…")
+            for button in (self.start_button, self.add_files_button, self.add_folder_button, self.clear_button):
+                button.setEnabled(False)
+            self._close_timer.start()
+        else:
+            if self._settings_ready_to_close():
+                self._complete_close()
+                super().closeEvent(event)
+            else:
+                event.ignore()
+
+    def _has_pending_shutdown(self):
+        return (self.worker_thread is not None or self.install_thread is not None
+                or bool(self._history_save_jobs) or self._import_job is not None
+                or bool(self._duration_jobs)
+                or bool(self._io_jobs)
+                or (self.history_page is not None and self.history_page.pending_actions)
+                or getattr(self.settings, "busy", False))
+
+    def _complete_close(self):
+        self._close_timer.stop()
+        self._closing = True
+        if self.history_page is not None:
+            self.history_page.shutdown()
+
+    def _finish_close_when_ready(self):
+        if not self._has_pending_shutdown():
+            self._close_timer.stop()
+            if self._settings_ready_to_close():
+                self._complete_close()
+                self.close()
+
+    def _settings_ready_to_close(self):
+        if not getattr(self.settings, "save_failed", False):
+            return True
+        answer = QMessageBox.warning(
+            self, "设置尚未保存",
+            "磁盘或目录权限导致设置保存失败，修改仍保留在本窗口。\n"
+            "重试会再次保存；放弃会关闭并丢弃未保存设置；取消会留在软件中。",
+            QMessageBox.Retry | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Retry,
+        )
+        if answer == QMessageBox.Discard:
+            return True
+        if answer == QMessageBox.Retry:
+            self.settings.sync()
+            self._close_timer.start()
+        else:
+            self._close_requested = False
+            self._preflight_pending = False
+            self.table.setEnabled(True)
+            if self.history_page is not None:
+                self.history_page.cancel_shutdown()
+            for control in (self.start_button, self.clear_button, self.add_files_button, self.add_folder_button):
+                control.setEnabled(True)
+        return False
 
     def _asset_path(self, name: str) -> Path:
         return self.project_root / "app" / "assets" / name
 
+    def _run_io(self, operation, callback):
+        from .ui_io import IoJob, start_io
+        job = IoJob(operation)
+        self._io_jobs[id(job)] = (job, callback)
+        job.signals.done.connect(self._io_ready)
+        start_io(job)
+        return job
+
+    @Slot(object, object, str)
+    def _io_ready(self, job, result, error):
+        owned = self._io_jobs.pop(id(job), None)
+        if owned and not self._closing and not self._close_requested and not job.cancelled:
+            owned[1](result, error)
+
     def _debug_log(self, message: str) -> None:
-        try:
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.runtime_log_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.runtime_log_path.open("a", encoding="utf-8") as handle:
-                handle.write(f"[{stamp}] {message}\n")
-        except Exception:
-            pass
+        from .background_feedback import enqueue_log
+        enqueue_log(self.runtime_log_path, message)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -1436,7 +1584,8 @@ class MainWindow(QMainWindow):
         self.table.setWordWrap(False)
         self.table.setTextElideMode(Qt.ElideRight)
         self.table.itemClicked.connect(self._on_table_item_clicked)
-        self.table.viewport().installEventFilter(self)
+        self._queue_viewport = self.table.viewport()
+        self._queue_viewport.installEventFilter(self)
         self.table.setItemDelegateForColumn(COL_SELECT, CenteredCheckBoxDelegate(self.table))
         header = self.table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignCenter)
@@ -1661,7 +1810,7 @@ class MainWindow(QMainWindow):
         self._add_paths(paths)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if watched is self.table.viewport():
+        if watched is getattr(self, "_queue_viewport", None):
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
                 row = self._check_column_row_at_event(event)
                 if row is not None:
@@ -1698,6 +1847,8 @@ class MainWindow(QMainWindow):
         return row
 
     def _apply_drag_check(self, row: int) -> None:
+        if self._preflight_pending or self._import_job is not None or self._close_requested:
+            return
         if row in self.check_drag_rows:
             return
         item = self.table.item(row, COL_SELECT)
@@ -1714,10 +1865,11 @@ class MainWindow(QMainWindow):
 
     def _open_output_dir(self) -> None:
         path = Path(self.output_edit.text()).expanduser()
-        path.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        self._reveal_path(path, create_directory=True)
 
     def _open_settings(self) -> None:
+        if self._close_requested or self._closing:
+            return
         dialog = AppSettingsDialog(
             self,
             completion_sound=self.completion_sound_enabled,
@@ -1727,27 +1879,32 @@ class MainWindow(QMainWindow):
             save_beside_video=self.save_beside_video,
             precision_subtitles=self.precision_subtitles,
         )
-        if dialog.exec() != QDialog.Accepted:
-            return
-        from .cloud_credentials import save_api_key
         try:
-            if dialog.cloud_key_edit.text().strip():
-                save_api_key(self.settings, dialog.cloud_key_edit.text())
-            elif dialog.cloud_key_clear.isChecked():
-                save_api_key(self.settings, "")
-        except RuntimeError as exc:
-            QMessageBox.warning(self, "API Key 未保存", str(exc))
-            return
-        values = dialog.values()
-        self.completion_sound_enabled = values["completion_sound"]
-        self.completion_dialog_enabled = values["completion_dialog"]
-        self.auto_open_output_enabled = values["auto_open_output"]
-        self.create_video_subfolder = values["create_video_subfolder"]
-        self.save_beside_video = values["save_beside_video"]
-        self.precision_subtitles = values["precision_subtitles"]
-        self._save_settings()
-        self._set_copy_tip("设置已保存", active=True)
-        QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
+            if dialog.exec() != QDialog.Accepted or self._close_requested:
+                return
+            from .cloud_credentials import save_api_key
+            try:
+                if dialog.cloud_key_edit.text().strip():
+                    save_api_key(self.settings, dialog.cloud_key_edit.text())
+                elif dialog.cloud_key_clear.isChecked():
+                    save_api_key(self.settings, "")
+            except RuntimeError as exc:
+                QMessageBox.warning(self, "API Key 未保存", str(exc))
+                return
+            values = dialog.values()
+            self.completion_sound_enabled = values["completion_sound"]
+            self.completion_dialog_enabled = values["completion_dialog"]
+            self.auto_open_output_enabled = values["auto_open_output"]
+            self.create_video_subfolder = values["create_video_subfolder"]
+            self.save_beside_video = values["save_beside_video"]
+            self.precision_subtitles = values["precision_subtitles"]
+            self._pending_settings_notice = True
+            self._set_copy_tip("正在保存设置…", active=True)
+            self._save_settings()
+            if not getattr(self.settings, "busy", False):
+                self._settings_write_finished(not getattr(self.settings, "save_failed", False))
+        finally:
+            dialog.deleteLater()
 
     @staticmethod
     def _completion_sound_bytes(has_failure: bool) -> bytes:
@@ -1779,11 +1936,14 @@ class MainWindow(QMainWindow):
         has_failure = bool(summary.get("failed", 0) or summary.get("no_text", 0))
         try:
             if winsound is not None and sys.platform == "win32":
-                winsound.PlaySound(self._completion_sound_bytes(has_failure), winsound.SND_MEMORY)
+                from .background_feedback import play_sound
+                data = self._completion_sound_bytes(has_failure)
+                player, flags = winsound.PlaySound, winsound.SND_MEMORY
+                play_sound(lambda: player(data, flags))
             else:
                 QApplication.beep()
         except RuntimeError as exc:
-            self._debug_log(f"completion sound unavailable: {exc}")
+            self._debug_log(f"completion sound unavailable: {type(exc).__name__}")
 
     def _choose_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "选择视频或音频文件", "", "媒体文件 (*.mp4 *.mov *.mkv *.avi *.m4v *.wmv *.flv *.webm *.mp3 *.wav *.m4a *.aac *.flac *.ogg);;所有文件 (*.*)")
@@ -1795,20 +1955,43 @@ class MainWindow(QMainWindow):
             self._add_paths([Path(folder)])
 
     def _expand_media_paths(self, paths: list[Path]) -> list[Path]:
+        # This method runs in PathDiscovery. Resolve symlinks/network paths here,
+        # never while constructing table widgets on the GUI thread.
+        job = self._import_job
+        if job is not None:
+            job.resolved_paths = {}
+        def cancelled():
+            return job is not None and job.cancelled
         media_paths: list[Path] = []
+        def append(path):
+            resolved = str(path.resolve())
+            if job is not None:
+                job.resolved_paths[str(path)] = resolved
+            # Keep the selected filename for display, including symlink aliases.
+            media_paths.append(path)
         for path in paths:
+            if cancelled():
+                break
             if path.is_dir():
-                media_paths.extend(
-                    child
-                    for child in sorted(path.rglob("*"))
-                    if child.is_file() and child.suffix.lower() in SUPPORTED_EXTENSIONS
-                )
+                found = []
+                for child in path.rglob("*"):
+                    if cancelled():
+                        break
+                    if child.suffix.lower() in SUPPORTED_EXTENSIONS and child.is_file():
+                        found.append(child)
+                for child in sorted(found):
+                    if cancelled():
+                        break
+                    append(child)
             elif path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                media_paths.append(path)
+                if not cancelled():
+                    append(path)
         return media_paths
 
     def _add_paths(self, paths: list[Path]) -> None:
-        if self._closing:
+        if self._closing or self._close_requested:
+            return
+        if self._preflight_pending or self.worker_thread or self.install_thread:
             return
         if self._import_job is not None:
             self.status_label.setText("正在添加文件，请稍后重试。")
@@ -1830,52 +2013,84 @@ class MainWindow(QMainWindow):
     def _discovery_ready(self, job, paths, error):
         if self._import_job is not job:
             return
-        cancelled = job.cancelled
-        self._import_progress.close()
-        self._import_job = None
-        if self._closing:
-            return
-        if not cancelled and not error:
+        if job.cancelled or error or self._closing or self._close_requested:
+            self._finish_import(job, 0, error)
+        else:
             self._insert_discovered_paths(paths)
-        elif error:
-            self.status_label.setText(error)
-        if self.worker_thread is None:
-            for control in (self.add_files_button, self.add_folder_button, self.start_button, self.clear_button):
-                control.setEnabled(True)
 
     def _insert_discovered_paths(self, media_paths) -> None:
-        existing = {
-            self.table.item(row, COL_OUTPUT).data(SOURCE_PATH_ROLE)
-            for row in range(self.table.rowCount())
-            if self.table.item(row, COL_OUTPUT)
-        }
-        progress = QProgressDialog("正在读取文件信息...", "取消", 0, max(len(media_paths), 1), self)
-        progress.setWindowTitle("添加文件")
-        progress.setWindowModality(Qt.ApplicationModal)
-        progress.setMinimumDuration(0)
-        progress.setAutoClose(True)
-        progress.setAutoReset(True)
-        added = 0
-        for index, path in enumerate(media_paths, start=1):
-            if self._closing:
-                break
-            progress.setValue(index - 1)
-            progress.setLabelText(f"正在读取文件信息... {index}/{len(media_paths)}")
-            QApplication.processEvents()
-            if progress.wasCanceled():
-                break
-            resolved = str(path.resolve())
-            if resolved in existing:
-                continue
-            self._add_row(path)
-            existing.add(resolved)
-            added += 1
-        progress.setValue(max(len(media_paths), 1))
+        job = self._import_job
+        if job is None:
+            return
+        progress = self._import_progress
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setRange(0, max(len(media_paths), 1))
+        existing = set()
+        scan_row, existing_rows, index, added = 0, self.table.rowCount(), 0, 0
+
+        def append_batch():
+            nonlocal scan_row, index, added
+            if self._import_job is not job:
+                return
+            if job.cancelled or self._closing or self._close_requested:
+                self._finish_import(job, added)
+                return
+            deadline = time.monotonic() + .008
+            try:
+                # Existing queues can also be large; scan them with the same budget.
+                scanned = 0
+                while scan_row < existing_rows and scanned < 256 and time.monotonic() < deadline:
+                    item = self.table.item(scan_row, COL_OUTPUT)
+                    if item:
+                        existing.add(os.path.normcase(str(item.data(SOURCE_PATH_ROLE))))
+                    scan_row += 1
+                    scanned += 1
+                if scan_row == existing_rows:
+                    rows = 0
+                    while index < len(media_paths) and rows < 4 and time.monotonic() < deadline:
+                        path = media_paths[index]
+                        index += 1
+                        resolved = os.path.normcase(getattr(job, "resolved_paths", {}).get(str(path), str(path)))
+                        if resolved in existing:
+                            continue
+                        self._add_row(path)
+                        existing.add(resolved)
+                        added += 1
+                        rows += 1
+                    progress.setValue(index)
+                    progress.setLabelText(f"正在添加文件… {index}/{len(media_paths)}")
+            except Exception:
+                self._finish_import(job, added, "添加文件未完成，请检查文件位置或稍后重试。")
+                return
+            if scan_row == existing_rows and index == len(media_paths):
+                self._finish_import(job, added)
+            else:
+                QTimer.singleShot(0, append_batch)
+        QTimer.singleShot(0, append_batch)
+
+    def _finish_import(self, job, added, error=""):
+        if self._import_job is not job:
+            return
+        self._import_job = None
+        self._import_progress.close()
+        self._import_progress.deleteLater()
+        if self._closing or self._close_requested:
+            return
         self._set_copy_tip(f"已添加 {added} 个文件" if added else "没有新增文件", active=bool(added))
         QTimer.singleShot(1800, lambda: self._set_copy_tip("", active=False))
         self._update_status()
+        if error:
+            self.status_label.setText(error)
+        if not self.worker_thread and not self.install_thread and not self._preflight_pending:
+            for control in (self.add_files_button, self.add_folder_button, self.start_button, self.clear_button):
+                control.setEnabled(True)
 
     def _add_row(self, path: Path) -> None:
+        # Discovery has resolved real inputs already. Direct QA/internal callers
+        # only require lexical absolutization, which performs no filesystem I/O.
+        resolved = getattr(self._import_job, "resolved_paths", {}).get(str(path))
+        path = Path(os.path.abspath(path))
         row = self.table.rowCount()
         self.table.insertRow(row)
         self._set_cell(row, COL_INDEX, str(row + 1))
@@ -1889,7 +2104,8 @@ class MainWindow(QMainWindow):
         self._set_cell(row, COL_ELAPSED, "-")
         self._set_cell(row, COL_ETA, "-")
         output_item = self._set_cell(row, COL_OUTPUT, str(Path(self.output_edit.text()) / safe_output_stem(path.stem)))
-        output_item.setData(SOURCE_PATH_ROLE, str(path.resolve()))
+        output_item.setData(SOURCE_PATH_ROLE, resolved or str(path))
+        output_item.setData(INVOCATION_TASK_ID_ROLE, uuid4().hex)
         self._set_locate_button(row)
 
         from .media_probe import DurationProbe, start_probe
@@ -1925,12 +2141,14 @@ class MainWindow(QMainWindow):
     def _update_output_cell(self, row: int, text: str, output_file: Path | None = None) -> QTableWidgetItem:
         previous = self.table.item(row, COL_OUTPUT)
         source_path = previous.data(SOURCE_PATH_ROLE) if previous else None
+        invocation_task_id = previous.data(INVOCATION_TASK_ID_ROLE) if previous else None
         previous_output = previous.data(OUTPUT_FILE_ROLE) if previous else None
         item = self._set_cell(row, COL_OUTPUT, text)
+        item.setData(INVOCATION_TASK_ID_ROLE, invocation_task_id)
         if source_path:
             item.setData(SOURCE_PATH_ROLE, source_path)
         if output_file is not None:
-            item.setData(OUTPUT_FILE_ROLE, str(output_file.resolve()))
+            item.setData(OUTPUT_FILE_ROLE, os.path.abspath(str(output_file)))
         elif previous_output:
             item.setData(OUTPUT_FILE_ROLE, previous_output)
         return item
@@ -1948,7 +2166,7 @@ class MainWindow(QMainWindow):
                     return path
         return None
 
-    def _generated_output_target_for_row(self, row: int) -> Path | None:
+    def _generated_output_target_for_row(self, row: int, *, check_exists: bool = True) -> Path | None:
         output_item = self.table.item(row, COL_OUTPUT)
         if not output_item:
             return None
@@ -1956,28 +2174,65 @@ class MainWindow(QMainWindow):
         if not output_value:
             return None
         path = Path(str(output_value))
-        return path if path.exists() else None
+        return path if not check_exists or path.exists() else None
 
     def _locate_row_file(self, row: int) -> None:
-        target = self._locate_target_for_row(row)
-        if target is None:
+        # Snapshot widget state before the background operation; rows may change.
+        output_item = self.table.item(row, COL_OUTPUT)
+        candidates = tuple(
+            Path(str(value))
+            for role in (OUTPUT_FILE_ROLE, SOURCE_PATH_ROLE)
+            if output_item is not None and (value := output_item.data(role))
+        )
+        if not candidates:
             QMessageBox.warning(self, "无法定位文件", "源文件和导出文件均不存在，可能已被移动或删除。")
             return
-        self._reveal_path(target)
+        self._reveal_path(candidates[0], alternatives=candidates[1:])
 
-    def _reveal_path(self, target: Path) -> None:
-        try:
-            if target.is_dir():
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
-            elif sys.platform == "win32":
-                # Explorer 需要把 /select, 与实际路径拆成两个参数；合并后中文或空格路径会被误解析。
-                subprocess.Popen(["explorer.exe", "/select,", os.path.normpath(str(target))])
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", "-R", str(target)])
+    def _reveal_path(self, target: Path, *, alternatives=(), create_directory=False) -> None:
+        if self._closing or self._close_requested:
+            return
+        choices = tuple(dict.fromkeys((target, *alternatives)))
+        request_key = (choices, create_directory)
+        pending = getattr(self, "_navigation_requests", None)
+        if pending is None:
+            self._navigation_requests = pending = set()
+        if request_key in pending:
+            return
+        pending.add(request_key)
+
+        def reveal():
+            if create_directory:
+                target.mkdir(parents=True, exist_ok=True)
+                selected = target
             else:
-                subprocess.Popen(["xdg-open", str(target.parent)])
-        except OSError as exc:
-            QMessageBox.warning(self, "无法定位文件", f"文件管理器启动失败：{exc}")
+                selected = next((path for path in choices if path.exists()), None)
+            if selected is None:
+                return False
+            is_directory = selected.is_dir()
+            if self._close_requested or self._closing:
+                return False
+            if sys.platform == "win32":
+                # Explorer 需要把 /select, 与实际路径拆成两个参数；合并后中文或空格路径会被误解析。
+                args = ["explorer.exe"]
+                if not is_directory:
+                    args.append("/select,")
+                subprocess.Popen([*args, os.path.normpath(str(selected))])
+            elif sys.platform == "darwin":
+                args = ["open"] if is_directory else ["open", "-R"]
+                subprocess.Popen([*args, str(selected)])
+            else:
+                subprocess.Popen(["xdg-open", str(selected if is_directory else selected.parent)])
+            return True
+
+        def ready(opened, error):
+            pending.discard(request_key)
+            if error:
+                QMessageBox.warning(self, "无法定位文件", f"文件管理器启动失败：{error}")
+            elif not opened:
+                QMessageBox.warning(self, "无法定位文件", "源文件和导出文件均不存在，可能已被移动或删除。")
+
+        self._run_io(reveal, ready)
 
     def _build_preview_options(self) -> TranscribeOptions:
         return TranscribeOptions(
@@ -2100,8 +2355,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "导出格式为空", "请至少选择 TXT、Markdown 或 SRT。")
             return None
         output_dir = Path(self.output_edit.text()).expanduser()
-        if not self.save_beside_video:
-            output_dir.mkdir(parents=True, exist_ok=True)
         return TranscribeOptions(
             output_dir,
             self.model_combo.currentText(),
@@ -2132,12 +2385,9 @@ class MainWindow(QMainWindow):
             paths.append(output_base / f"{safe_stem}.docx")
         return paths
 
-    def _handle_existing_outputs(self, items: list[QueueItem], options: TranscribeOptions) -> list[QueueItem] | None:
-        item_existing: dict[int, list[Path]] = {}
-        for item in items:
-            existing_paths = [path for path in self._expected_output_paths(item, options) if path.exists()]
-            if existing_paths:
-                item_existing[item.row] = existing_paths
+    def _handle_existing_outputs(self, items: list[QueueItem], options: TranscribeOptions, item_existing=None) -> list[QueueItem] | None:
+        if item_existing is None:
+            item_existing = self._scan_existing_outputs(items, options)
 
         existing = [path for paths in item_existing.values() for path in paths]
         if not existing:
@@ -2179,6 +2429,10 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "没有需要转写的项目", "已选择的项目都存在导出结果，本次没有需要继续转写的视频。")
             return None
         return filtered_items
+
+    def _scan_existing_outputs(self, items, options):
+        return {item.row: existing for item in items
+                if (existing := [path for path in self._expected_output_paths(item, options) if path.exists()])}
 
     def _prepare_items_for_run(self, items: list[QueueItem]) -> None:
         for item in items:
@@ -2225,6 +2479,8 @@ class MainWindow(QMainWindow):
         self.worker_thread.start()
 
     def _dll_exists_in_path(self, dll_names: set[str]) -> bool:
+        if getattr(self, "_preflight_gpu_ready", None) is not None:
+            return self._preflight_gpu_ready
         return gpu_libraries_available(dll_names)
 
     def _warn_gpu_runtime_if_needed(self) -> bool:
@@ -2261,6 +2517,7 @@ class MainWindow(QMainWindow):
                 items.append(
                     QueueItem(
                         path=Path(output_item.data(SOURCE_PATH_ROLE)),
+                        task_id=output_item.data(INVOCATION_TASK_ID_ROLE) or "",
                         row=row,
                         model_size=model_widget.currentText() if isinstance(model_widget, QComboBox) else self.model_combo.currentText(),
                         language=language_widget.currentText() if isinstance(language_widget, QComboBox) else self.language_combo.currentText(),
@@ -2268,11 +2525,13 @@ class MainWindow(QMainWindow):
                 )
         return items
 
-    def _missing_dependencies(self) -> list[str]:
-        return _missing_runtime_dependencies(self.docx_check.isChecked())
+    def _missing_dependencies(self, include_docx=None) -> list[str]:
+        return _missing_runtime_dependencies(self.docx_check.isChecked() if include_docx is None else include_docx)
 
     def _start(self) -> None:
         self._debug_log("start clicked")
+        if self._preflight_pending or self._import_job is not None or self._close_requested or self._closing:
+            return
         if self.worker_thread:
             self._debug_log("start ignored: worker already running")
             return
@@ -2306,20 +2565,8 @@ class MainWindow(QMainWindow):
             if not api_key:
                 QMessageBox.information(self, "未配置 API Key", "请在设置的“云端转写 API”中填写百炼 API Key。")
                 return
-            names = "、".join(dict.fromkeys(item.model_size for item in cloud_items))
-            answer = QMessageBox.question(self, "云端转写", f"本次 {len(cloud_items)} 个文件将使用 {names}。\n音频会上传至阿里云百炼（北京），可能产生费用；本地模型任务仍在本机处理。\n\n确认开始？", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer != QMessageBox.Yes:
-                return
             options = replace(options, cloud_api_key=api_key, cloud_state_dir=self.history_store.root / "cloud-tasks")
         needs_qwen = any(model_for_mode(item.model_size) == "qwen3-asr" for item in items) or (options.export_srt and options.precision_subtitles and any(model_for_mode(item.model_size) == "turbo" for item in items))
-        if needs_qwen and getattr(sys, "frozen", False):
-            from .qwen_bridge import runtime_ready
-            if not runtime_ready():
-                answer = QMessageBox.question(self, "安装本地转写环境", "首次使用中文精确或精确字幕，需要下载独立运行环境。GPU 依赖占用数 GB，安装后长期复用，音频不会上传。\n\n现在打开安装窗口吗？完成后请重新点击开始转写。", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-                if answer == QMessageBox.Yes:
-                    installer = Path(sys.executable).parent / "安装中文精确运行环境_Windows.bat"
-                    subprocess.Popen(["cmd.exe", "/c", str(installer)], cwd=str(installer.parent), creationflags=subprocess.CREATE_NEW_CONSOLE)
-                return
         if self.polish_check.isChecked() and not (
             os.environ.get("NANZHU_TEXT_API_KEY") or os.environ.get("OPENAI_API_KEY")
         ):
@@ -2331,36 +2578,72 @@ class MainWindow(QMainWindow):
             )
             self._debug_log("start aborted: polish enabled without API key")
             return
-        self._debug_log("dependency scan: begin")
-        missing_dependencies = self._missing_dependencies()
-        self._debug_log(f"dependency scan: missing={missing_dependencies}")
-        if missing_dependencies:
-            self._debug_log("dependencies missing: start installer")
-            self._install_dependency_then_start()
-            return
-        self._debug_log("gpu runtime scan: begin")
-        if not self._warn_gpu_runtime_if_needed():
-            self._debug_log("start aborted: gpu warning rejected")
-            return
-        self._debug_log("gpu runtime scan: completed")
-        if self.compute_mode_combo.currentText() == "GPU 快速" and any(model_for_mode(item.model_size) == "turbo" for item in items):
-            has_cublas = self._dll_exists_in_path({"cublas64_12.dll"})
-            has_cudnn = self._dll_exists_in_path({"cudnn64_9.dll"})
-            if not has_cublas or not has_cudnn:
-                self.compute_mode_combo.setCurrentText("CPU 稳定")
-                self._debug_log("late gpu check switched to CPU")
-        if options.compute_mode != self.compute_mode_combo.currentText():
-            options = self._build_options()
-            if not options:
-                self._debug_log("start aborted: rebuild options failed after mode change")
-                return
-            self._debug_log(f"options rebuilt: mode={options.compute_mode}")
-        items = self._handle_existing_outputs(items, options)
-        if not items:
-            self._debug_log("start aborted: no items after existing-output scan")
-            return
+        # Snapshot widgets before dispatch. Disk, import and runtime scans belong
+        # to the bounded I/O pool, including network/removable output paths.
+        include_docx = options.export_docx
+        frozen_qwen = needs_qwen and getattr(sys, "frozen", False)
+        needs_gpu = options.compute_mode == "GPU 快速" and any(
+            model_for_mode(item.model_size) == "turbo" for item in items
+        )
+        self._preflight_pending = True
+        self.table.setEnabled(False)
+        for control in (self.start_button, self.clear_button, self.add_files_button, self.add_folder_button):
+            control.setEnabled(False)
+        self.status_label.setText("正在检查转写环境和输出文件…")
 
-        self._start_worker(items, options)
+        def inspect_environment():
+            from .qwen_bridge import runtime_ready
+            if not options.save_beside_video:
+                options.output_dir.mkdir(parents=True, exist_ok=True)
+            return {
+                "qwen_ready": not frozen_qwen or runtime_ready(),
+                "missing": self._missing_dependencies(include_docx),
+                "gpu_ready": not needs_gpu or all(gpu_libraries_available({name}) for name in ("cublas64_12.dll", "cudnn64_9.dll")),
+                "existing": self._scan_existing_outputs(items, options),
+            }
+
+        self._run_io(inspect_environment, lambda result, error: self._start_after_preflight(items, options, result, error))
+
+    def _start_after_preflight(self, items, options, result, error):
+        try:
+            if error:
+                self.status_label.setText(error)
+                return
+            # A row number can be reused after a queue change. QueueItem equality
+            # includes task_id, so even re-adding the same source invalidates the
+            # old scan and cannot send its progress/results to the replacement.
+            if self._selected_items() != items:
+                self.status_label.setText("队列已变更，请重新点击开始转写。")
+                return
+            if not result["qwen_ready"]:
+                answer = QMessageBox.question(self, "安装本地转写环境", "首次使用中文精确或精确字幕，需要下载独立运行环境。GPU 依赖占用数 GB，安装后长期复用，音频不会上传。\n\n现在打开安装窗口吗？完成后请重新点击开始转写。", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if answer == QMessageBox.Yes:
+                    installer = Path(sys.executable).parent / "安装中文精确运行环境_Windows.bat"
+                    subprocess.Popen(["cmd.exe", "/c", str(installer)], cwd=str(installer.parent), creationflags=subprocess.CREATE_NEW_CONSOLE)
+                return
+            if result["missing"]:
+                self._install_dependency_then_start()
+                return
+            self._preflight_gpu_ready = result["gpu_ready"]
+            if not self._warn_gpu_runtime_if_needed():
+                return
+            if not result["gpu_ready"]:
+                self.compute_mode_combo.setCurrentText("CPU 稳定")
+            if options.compute_mode != self.compute_mode_combo.currentText():
+                options = replace(options, compute_mode=self.compute_mode_combo.currentText())
+            items = self._handle_existing_outputs(items, options, result["existing"])
+            if items:
+                self._start_worker(items, options)
+        finally:
+            self._preflight_gpu_ready = None
+            self._preflight_pending = False
+            # Keep the queue guarded through confirmation dialogs as well as
+            # the background scan; those dialogs run a nested GUI event loop.
+            if not self._close_requested and not self._closing:
+                self.table.setEnabled(True)
+                if not self.worker_thread and not self.install_thread and self._import_job is None:
+                    for control in (self.start_button, self.clear_button, self.add_files_button, self.add_folder_button):
+                        control.setEnabled(True)
 
     def _install_dependency_then_start(self) -> None:
         if self.install_thread:
@@ -2395,6 +2678,11 @@ class MainWindow(QMainWindow):
     def _on_dependency_install_finished(self, ok: bool, message: str) -> None:
         if self.install_progress:
             self.install_progress.close()
+            self.install_progress.deleteLater()
+            self.install_progress = None
+        if self._close_requested or self._closing:
+            self.start_after_install = False
+            return
         if ok:
             self.status_label.setText("依赖安装完成，正在开始转写。")
             self._set_copy_tip("依赖安装完成", active=True)
@@ -2407,11 +2695,18 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _cleanup_install_worker(self) -> None:
-        should_start = self.start_after_install and not self._missing_dependencies()
+        if self.install_thread is not None and not self.install_thread.wait(0):
+            QTimer.singleShot(10, self._cleanup_install_worker)
+            return
+        should_start = not self._close_requested and not self._closing and self.start_after_install
+        if self.install_thread is not None:
+            self.install_thread.deleteLater()
         self.install_thread = None
         self.install_worker = None
         self.install_progress = None
         self.start_after_install = False
+        if self._close_requested or self._closing:
+            return
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.clear_button.setEnabled(True)
@@ -2427,6 +2722,9 @@ class MainWindow(QMainWindow):
             self.status_label.setText("正在停止，当前阶段结束后退出。")
 
     def _clear(self) -> None:
+        if (self._preflight_pending or self._import_job is not None or self.worker_thread
+                or self.install_thread or self._close_requested or self._closing):
+            return
         for job in self._duration_jobs.values():
             job.cancelled = True
         self.table.setRowCount(0)
@@ -2435,6 +2733,8 @@ class MainWindow(QMainWindow):
         self._update_status()
 
     def _select_all(self) -> None:
+        if self._preflight_pending or self._import_job is not None or self._close_requested:
+            return
         for row in range(self.table.rowCount()):
             status_item = self.table.item(row, COL_STATUS)
             select_item = self.table.item(row, COL_SELECT)
@@ -2442,6 +2742,8 @@ class MainWindow(QMainWindow):
                 select_item.setCheckState(Qt.Checked)
 
     def _invert(self) -> None:
+        if self._preflight_pending or self._import_job is not None or self._close_requested:
+            return
         for row in range(self.table.rowCount()):
             status_item = self.table.item(row, COL_STATUS)
             select_item = self.table.item(row, COL_SELECT)
@@ -2574,6 +2876,7 @@ class MainWindow(QMainWindow):
         self._debug_log("all done")
         self.status_label.setText("转写任务已结束。")
         rows = sorted(self.active_rows)
+        self._pending_completion_candidates = ()
         if rows:
             statuses = [
                 self.table.item(row, COL_STATUS).text()
@@ -2585,14 +2888,12 @@ class MainWindow(QMainWindow):
                 for row in rows
                 if self.table.item(row, COL_STATUS) and self.table.item(row, COL_STATUS).text() == "完成"
             ]
-            self.pending_completion_target = next(
-                (
-                    target
-                    for row in reversed(completed_rows)
-                    if (target := self._generated_output_target_for_row(row)) is not None
-                ),
-                None,
+            self._pending_completion_candidates = tuple(
+                target
+                for row in reversed(completed_rows)
+                if (target := self._generated_output_target_for_row(row, check_exists=False)) is not None
             )
+            self.pending_completion_target = next(iter(self._pending_completion_candidates), None)
             self.pending_completion_summary = {
                 "success": statuses.count("完成"),
                 "failed": statuses.count("失败"),
@@ -2606,6 +2907,13 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _cleanup_worker(self) -> None:
+        # finished is emitted before thread-local/Python QObject destruction ends.
+        # Destroying QThread here can wait under the GIL and deadlock that cleanup.
+        if self.worker_thread is not None and not self.worker_thread.wait(0):
+            QTimer.singleShot(10, self._cleanup_worker)
+            return
+        if self.worker_thread is not None:
+            self.worker_thread.deleteLater()
         self.worker_thread = None
         self.worker = None
         self.start_button.setEnabled(True)
@@ -2617,9 +2925,11 @@ class MainWindow(QMainWindow):
         self._update_status()
         summary = self.pending_completion_summary
         completion_target = self.pending_completion_target
+        completion_candidates = getattr(self, "_pending_completion_candidates", ())
         self.pending_completion_summary = None
         self.pending_completion_target = None
-        if summary:
+        self._pending_completion_candidates = ()
+        if summary and not self._close_requested:
             if summary.get("success", 0) or summary.get("failed", 0) or summary.get("no_text", 0):
                 self._play_completion_sound(summary)
             if (
@@ -2630,7 +2940,8 @@ class MainWindow(QMainWindow):
                 and not summary.get("stopped", 0)
                 and completion_target is not None
             ):
-                QTimer.singleShot(0, lambda target=completion_target: self._reveal_path(target))
+                QTimer.singleShot(0, lambda target=completion_target, choices=completion_candidates:
+                                  self._reveal_path(target, alternatives=choices[1:]))
             if self.completion_dialog_enabled:
                 QTimer.singleShot(0, lambda summary=summary: self._show_completion_dialog(summary))
 
@@ -2648,7 +2959,13 @@ class MainWindow(QMainWindow):
             self._set_locate_button(row)
 
     def _show_completion_dialog(self, summary: dict[str, int]) -> None:
-        CompletionResultDialog(self, summary).exec()
+        if self._close_requested or self._closing:
+            return
+        dialog = CompletionResultDialog(self, summary)
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
 
     def _update_main_progress(self) -> None:
         rows = sorted(self.active_rows) if self.active_rows else list(range(self.table.rowCount()))
@@ -2661,7 +2978,7 @@ class MainWindow(QMainWindow):
             status = self.table.item(row, COL_STATUS).text() if self.table.item(row, COL_STATUS) else ""
             if status in {"完成", "失败", "已停止", "无文字", "已存在"}:
                 units += 1.0
-            elif status in {"转写中", "提取音频", "下载模型", "加载模型", "润色中"}:
+            elif status in {"转写中", "提取音频", "下载模型", "加载模型", "润色中", "字幕对齐"}:
                 units += self._row_progress_ratio(row)
         ratio = units / len(rows)
         self.main_progress.setValue(max(0, min(100, int(ratio * 100))))
@@ -2711,6 +3028,9 @@ def main() -> int:
         target.mkdir(parents=True, exist_ok=True)
         window = MainWindow(QSettings(str(target / "isolated-settings.ini"), QSettings.IniFormat))
         window.resize(1600, 1000)
+        if "--qa-history-source" in sys.argv:
+            source = Path(sys.argv[sys.argv.index("--qa-history-source") + 1]).resolve()
+            window._add_row(source)
         window.show()
         def capture():
             window.grab().save(str(target / "workbench.png"))
@@ -2719,6 +3039,7 @@ def main() -> int:
             app.processEvents()
             dialog.grab().save(str(target / "settings.png"))
             dialog.close()
+            dialog.deleteLater()
             if "--qa-history-source" in sys.argv:
                 from .qa_history_preview import capture_history
                 source = sys.argv[sys.argv.index("--qa-history-source") + 1]
@@ -2727,7 +3048,8 @@ def main() -> int:
             finish()
         def finish():
             window.close()
-            app.quit()
+            # The production close protocol drains owned work asynchronously.
+            # Last-window-close ends the event loop only once that has completed.
         QTimer.singleShot(600, capture)
         return app.exec()
     window = MainWindow()

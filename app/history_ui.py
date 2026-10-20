@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from bisect import bisect_right
 import hashlib
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot, QObject, QRunnable, QThreadPool, QRectF, QPoint, QSize, QEvent
 from PySide6.QtGui import QPixmap, QPainter, QColor, QPainterPath, QFont, QTextCursor, QTextBlockFormat
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QLineEdit, QComboBox, QScrollArea, QFrame,
@@ -27,6 +29,45 @@ class HistoryReadSignals(QObject):
 
 
 _history_save_pool = None
+_history_action_pool = None
+_thumbnail_pool = None
+
+
+class HistoryActionSignals(QObject):
+    done = Signal(int, object, str)
+
+
+class HistoryActionJob(QRunnable):
+    """Only plain data crosses the worker/UI boundary."""
+    def __init__(self, sequence, action, *, readonly=False):
+        super().__init__()
+        self.sequence, self.action = sequence, action
+        self.readonly = readonly
+        self.cancelled = False
+        self.signals = HistoryActionSignals()
+
+    def run(self):
+        try:
+            value = None if self.cancelled else self.action()
+            self.signals.done.emit(self.sequence, value, "")
+        except Exception as exc:
+            self.signals.done.emit(self.sequence, None, str(exc))
+
+
+def history_action_pool():
+    global _history_action_pool
+    if _history_action_pool is None:
+        _history_action_pool = QThreadPool()
+        _history_action_pool.setMaxThreadCount(1)
+    return _history_action_pool
+
+
+def thumbnail_pool():
+    global _thumbnail_pool
+    if _thumbnail_pool is None:
+        _thumbnail_pool = QThreadPool()
+        _thumbnail_pool.setMaxThreadCount(2)
+    return _thumbnail_pool
 
 
 def start_history_save(job):
@@ -68,7 +109,7 @@ class HistoryReadJob(QRunnable):
             if self.cancelled:
                 self.signals.done.emit(sequence, None, "")
                 return
-            records, total = self.store.query(keyword, period, limit)
+            records, total = self.store.query_cards(keyword, period, limit)
             result = (records, total, len(self.store.invalid_ids()) if not self.cancelled else 0)
             self.signals.done.emit(sequence, result, "")
         except Exception:
@@ -89,6 +130,8 @@ class ThumbnailJob(QRunnable):
     def run(self):
         path = self.root / "thumbnails" / (hashlib.sha256(self.record["id"].encode()).hexdigest() + ".png")
         try:
+            if self.cancelled.is_set():
+                return
             if not path.exists() and self.ffmpeg and Path(self.record["source"]).is_file():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 pending = path.with_suffix(".pending.png")
@@ -118,7 +161,8 @@ class ThumbnailJob(QRunnable):
                     pending.unlink(missing_ok=True)
         except (OSError, subprocess.SubprocessError):
             pass  # A thumbnail is optional; the document is still usable.
-        self.signals.done.emit(self.record["id"], str(path) if path.exists() else "")
+        finally:
+            self.signals.done.emit(self.record["id"], str(path) if path.exists() else "")
 
 
 def decorate_button(item, text, primary=False):
@@ -217,6 +261,8 @@ class DocumentEditor(QTextEdit):
         self.document().setDocumentMargin(16)
         self.setAcceptRichText(False)
         self.setLineWrapMode(QTextEdit.FixedPixelWidth)
+        self._load_sequence = 0
+        self.loading = False
         self.setStyleSheet("QTextEdit#HistoryEditor { background: #ffffff; color: #283746; border: none; border-radius: 12px; padding: 0; font-family: 'Microsoft YaHei UI'; font-size: 15px; selection-background-color: #dce4fb; selection-color: #1f2937; }")
 
     def resizeEvent(self, event):
@@ -237,6 +283,7 @@ class DocumentEditor(QTextEdit):
         return result
 
     def setPlainText(self, text):
+        self.cancel_load()
         super().setPlainText(text)
         cursor = QTextCursor(self.document())
         cursor.select(QTextCursor.Document)
@@ -247,6 +294,46 @@ class DocumentEditor(QTextEdit):
         cursor.mergeBlockFormat(block)
         self.document().clearUndoRedoStacks()
         self.document().setModified(False)
+
+    def cancel_load(self):
+        self._load_sequence += 1
+        self.loading = False
+        self.setReadOnly(False)
+        self.setUndoRedoEnabled(True)
+
+    def load_text(self, text):
+        """Yield between bounded insertions so large transcripts remain navigable."""
+        self.cancel_load()
+        if len(text) <= 32000:
+            self.setPlainText(text)
+            return
+        sequence = self._load_sequence
+        self.loading = True
+        self.setReadOnly(True)
+        self.setUndoRedoEnabled(False)
+        self.clear()
+        cursor = QTextCursor(self.document())
+        block = QTextBlockFormat()
+        block.setLineHeight(170, QTextBlockFormat.ProportionalHeight.value)
+        block.setBottomMargin(10)
+        block.setAlignment(Qt.AlignLeft)
+        cursor.setBlockFormat(block)
+        offset = 0
+        def append():
+            nonlocal offset
+            if sequence != self._load_sequence:
+                return
+            cursor.insertText(text[offset:offset + 8000])
+            offset += 8000
+            if offset < len(text):
+                QTimer.singleShot(0, append)
+            else:
+                self.loading = False
+                self.setReadOnly(False)
+                self.setUndoRedoEnabled(True)
+                self.document().setModified(False)
+                self.moveCursor(QTextCursor.Start)
+        QTimer.singleShot(0, append)
 
 
 class SubtitleList(QListWidget):
@@ -264,6 +351,7 @@ class SubtitleList(QListWidget):
         bar.sliderReleased.connect(self.pause_follow)
         bar.actionTriggered.connect(self.pause_follow)
         self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.setUniformItemSizes(True)
 
     def pause_follow(self, *_):
         self.manual_scroll = True
@@ -307,8 +395,17 @@ class HistoryPage(QWidget):
         self._read_job = None
         self._read_request = None
         self.jobs, self.thumbnails = {}, {}
-        self.thumbnail_pool = QThreadPool(self)
-        self.thumbnail_pool.setMaxThreadCount(2)
+        self.thumbnail_pool = thumbnail_pool()
+        self._actions = {}
+        self._action_sequence = 0
+        self._navigation_sequence = 0
+        self._navigation_job = None
+        self._navigation_request = None
+        self._navigation_pending = False
+        self._editor_needs_restore = False
+        self._save_pending = False
+        self._stopped_media_state = None
+        self.media_view = None
         self.current_record = None
         self.saved_text = ""
         self.columns = 0
@@ -399,7 +496,6 @@ class HistoryPage(QWidget):
         layout.addWidget(self.stack, 1)
         self._build_list()
         self._build_detail()
-        self._build_media()
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(200)
@@ -417,6 +513,91 @@ class HistoryPage(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "历史操作未完成", f"{exc}\n\n请检查文件位置或目录权限后重试。")
             return None
+
+    @property
+    def pending_actions(self):
+        return bool(self._actions or self.jobs or self._read_job or self._navigation_request) or self.editor.loading
+
+    def background_action(self, action, completed, *, key=None, readonly=False):
+        if self._shutting_down or (key and any(value[2] == key for value in self._actions.values())):
+            return
+        self._action_sequence += 1
+        job = HistoryActionJob(self._action_sequence, action, readonly=readonly)
+        self._actions[self._action_sequence] = (job, completed, key)
+        job.signals.done.connect(self._action_done)
+        history_action_pool().start(job)
+        return job
+
+    @Slot(int, object, str)
+    def _action_done(self, sequence, value, error):
+        entry = self._actions.pop(sequence, None)
+        if entry is None:
+            return
+        job, completed, key = entry
+        if key == "navigation":
+            self._navigation_job = None
+            if not self._shutting_down and not job.cancelled:
+                self.run_action(lambda: completed(value, error))
+            self._start_navigation()
+            return
+        if key == "save" and error:
+            self._save_pending = False
+        if job.cancelled:
+            return
+        if self._shutting_down and key != "save":
+            return
+        if error:
+            if not self._shutting_down:
+                self.show_error(f"历史操作未完成：{error}。请检查文件位置或目录权限后重试。")
+            return
+        self.run_action(lambda: completed(value))
+
+    def _queue_navigation(self, action, completed):
+        # A slow read owns at most one successor; rapid clicks replace that successor.
+        self._navigation_request = (self._navigation_sequence, action, completed)
+        self._start_navigation()
+
+    def _start_navigation(self):
+        if self._shutting_down or self._navigation_job is not None or self._navigation_request is None:
+            return
+        sequence, action, completed = self._navigation_request
+        self._navigation_request = None
+        def finished(value, error):
+            if sequence != self._navigation_sequence:
+                return
+            self._navigation_pending = False
+            self.editor.setEnabled(True)
+            if error:
+                self.show_error(f"历史操作未完成：{error}。请检查文件位置或目录权限后重试。")
+                return
+            completed(value)
+        self._navigation_job = self.background_action(action, finished, key="navigation", readonly=True)
+
+    def _cancel_navigation(self):
+        self._navigation_sequence += 1
+        self._navigation_request = None
+        self._navigation_pending = False
+        if self._navigation_job is not None:
+            self._navigation_job.cancelled = True
+
+    def _cancel_editor_load(self):
+        if self.editor.loading:
+            self._editor_needs_restore = True
+        self.editor.cancel_load()
+
+    def _restore_editor(self):
+        if self._editor_needs_restore and self.stack.currentIndex() == 1:
+            self._editor_needs_restore = False
+            self.editor.load_text(self.saved_text)
+
+    def _stop_media(self):
+        if self.media_view is None:
+            return
+        if self.stack.currentIndex() == 2 and self.media_view.source_key and hasattr(self, "media_record"):
+            self._stopped_media_state = (
+                self.media_record["id"], self.player.position(),
+                self.player.playbackState() == QMediaPlayer.PlayingState)
+        self.media_view.stop()
 
     def _build_list(self):
         page = QWidget()
@@ -509,7 +690,8 @@ class HistoryPage(QWidget):
         layout.addWidget(self.editor, 1)
         actions = QHBoxLayout()
         actions.addWidget(button("保存编辑", lambda: self.run_action(self.save_edit), True))
-        actions.addWidget(button("复制全部", lambda: QApplication.clipboard().setText(self.editor.toPlainText())))
+        actions.addWidget(button("复制全部", lambda: QApplication.clipboard().setText(
+            self.saved_text if self.editor.loading else self.editor.toPlainText())))
         from .main import CenterComboBox
         self.format = CenterComboBox()
         self.format.setObjectName("HistoryExportFormat")
@@ -523,6 +705,8 @@ class HistoryPage(QWidget):
         self.stack.addWidget(page)
 
     def _build_media(self):
+        if self.media_view is not None:
+            return
         page = QWidget()
         layout = QVBoxLayout(page)
         actions = QHBoxLayout()
@@ -574,41 +758,71 @@ class HistoryPage(QWidget):
         self.stack.addWidget(page)
 
     def dirty(self):
-        return self.stack.currentIndex() == 1 and self.editor.toPlainText() != self.saved_text
+        return (self.stack.currentIndex() == 1 and not self.editor.loading
+                and not self._editor_needs_restore and self.editor.toPlainText() != self.saved_text)
 
-    def leave(self):
-        if self.dirty():
+    def leave(self, on_saved=None, *, pending_navigation=False):
+        if self._shutting_down or self._save_pending:
+            return False
+        if not self._navigation_pending and self.dirty():
             choice = QMessageBox.question(self, "保存文稿编辑？", "当前文稿有未保存的修改。", QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
             if choice == QMessageBox.Cancel:
                 return False
             if choice == QMessageBox.Save:
-                try:
-                    self.save_edit()
-                except Exception as exc:
-                    QMessageBox.warning(self, "保存失败", str(exc))
-                    return False
-        self.media_view.stop()
+                self.save_edit(on_saved)
+                return False
+        self._cancel_navigation()
+        self._navigation_pending = pending_navigation
+        self.editor.setEnabled(not pending_navigation)
+        if pending_navigation:
+            # Keep the complete old document available if the next read fails.
+            self._restore_editor()
+        else:
+            self._cancel_editor_load()
+        self._stop_media()
         return True
 
     def request_back(self):
-        if self.leave():
+        if self.leave(self.request_back):
             self.back_requested.emit()
 
-    def shutdown(self):
+    def begin_shutdown(self):
+        if self._shutting_down:
+            return
         self._shutting_down = True
+        self._cancel_editor_load()
+        self.editor.setEnabled(False)
         if self._read_job is not None:
             self._read_job.cancelled = True
         self._render_sequence += 1
         self._render_timer.stop()
         self._read_sequence += 1
         self._read_request = None
-        self.media_view.stop()
+        self._cancel_navigation()
+        for job, _, _ in self._actions.values():
+            if job.readonly:
+                job.cancelled = True
+        self._stop_media()
         for job in self.jobs.values():
             job.cancelled.set()
-        self.thumbnail_pool.clear()
+
+    def cancel_shutdown(self):
+        """Resume after closing is cancelled; accepted writes have continued draining."""
+        if not self._shutting_down:
+            return
+        self._shutting_down = False
+        self.editor.setEnabled(True)
+        self._restore_editor()
+        self.reload()
+        state, self._stopped_media_state = self._stopped_media_state, None
+        if self.stack.currentIndex() == 2 and state is not None:
+            self.open_media(state[0], resume_state=state[1:])
+
+    def shutdown(self):
+        self.begin_shutdown()
 
     def show_list(self):
-        if not self.leave():
+        if not self.leave(self.show_list):
             return
         self.stack.setCurrentIndex(0)
         self.reload()
@@ -814,10 +1028,7 @@ class HistoryPage(QWidget):
             thumb.setIconSize(QSize(26, 26))
             thumb.setText("播放")
         else:
-            cached = self.store.root / "thumbnails" / (hashlib.sha256(record["id"].encode()).hexdigest() + ".png")
-            if cached.exists():
-                self._thumbnail_ready(record["id"], str(cached))
-            elif record["id"] not in self.jobs:
+            if record["id"] not in self.jobs:
                 job = ThumbnailJob(record, self.store.root, self.ffmpeg)
                 self.jobs[record["id"]] = job
                 job.signals.done.connect(self._thumbnail_ready)
@@ -825,11 +1036,16 @@ class HistoryPage(QWidget):
         return card
 
     def _thumbnail_ready(self, record_id, path):
-        self.jobs.pop(record_id, None)
-        if not path:
+        job = self.jobs.pop(record_id, None)
+        if self._shutting_down:
             return
         if record_id in self._deleted_records:
-            Path(path).unlink(missing_ok=True)
+            if path:
+                self.background_action(lambda: Path(path).unlink(missing_ok=True), lambda _: None)
+            return
+        if not path:
+            if job is not None and job.cancelled.is_set():
+                self._render_timer.start(0)
             return
         control = self.thumbnails.get(record_id)
         if control:
@@ -873,20 +1089,31 @@ class HistoryPage(QWidget):
         self.render()
 
     def select_all(self):
-        self.selected = self.store.all_matching_ids(self.search.text(), self.period.currentText())
-        self.render()
+        keyword, period = self.search.text(), self.period.currentText()
+        sequence = self._read_sequence
+        def loaded(ids):
+            if sequence != self._read_sequence or not self.selection_mode:
+                return
+            self.selected = ids
+            self.render()
+        self.background_action(lambda: self.store.all_matching_ids(keyword, period), loaded, key="select-all")
 
     def menu(self, record, anchor, detail=False):
         menu = QMenu(self)
         menu.setAttribute(Qt.WA_TranslucentBackground)
         menu.setWindowFlag(Qt.FramelessWindowHint, True)
         actions = [
-            ("转写信息", lambda: QMessageBox.information(self, "转写信息", self.metadata(record))),
+            ("转写信息", lambda: self.background_action(
+                lambda: self.store.get(record["id"]),
+                lambda full: QMessageBox.information(self, "转写信息", self.metadata(full)))),
             ("打开完整文字", lambda: self.open_record(record["id"])),
-            ("复制全部文字", lambda: QApplication.clipboard().setText(record["edited"] if record["edited"] is not None else record["final"])),
+            ("复制全部文字", lambda: self.background_action(
+                lambda: self.store.get(record["id"]),
+                lambda full: QApplication.clipboard().setText(full["edited"] if full["edited"] is not None else full["final"]))),
             ("播放原文件核对", lambda: self.open_media(record["id"])),
             ("定位原文件", lambda: self.locate(record["source"])),
-            ("定位导出文件", lambda: self.locate_export(record)),
+            ("定位导出文件", lambda: self.background_action(
+                lambda: self.store.get(record["id"]), self.locate_export)),
             ("删除历史记录", lambda: self.delete_records({record["id"]})),
         ]
         names = ["info", "file-text", "copy", "play", "folder", "folder", "trash-2"]
@@ -914,58 +1141,94 @@ class HistoryPage(QWidget):
         self.detail_feedback.setVisible(bool(text))
 
     def locate(self, path):
-        self.run_action(lambda: self.reveal(Path(path)) if Path(path).exists() else (_ for _ in ()).throw(ValueError("文件已被移动或删除，历史文稿仍然保留")))
+        def checked():
+            target = Path(path)
+            if not target.exists():
+                raise ValueError("文件已被移动或删除，历史文稿仍然保留")
+            return target
+        self.background_action(checked, self.reveal, key="locate")
 
     def locate_export(self, record):
-        path = next((path for path in reversed(record["outputs"]) if Path(path).exists()), None)
-        if path:
-            self.locate(path)
-        else:
-            QMessageBox.information(self, "导出文件不可用", "原导出文件已移动或删除。可打开完整文字重新导出，历史文稿仍然保留。")
+        def found(path):
+            if path:
+                self.reveal(Path(path))
+            else:
+                QMessageBox.information(self, "导出文件不可用", "原导出文件已移动或删除。可打开完整文字重新导出，历史文稿仍然保留。")
+        self.background_action(
+            lambda: next((path for path in reversed(record["outputs"]) if Path(path).exists()), None),
+            found, key="locate")
 
     def open_record(self, record_id):
-        def load():
-            record = self.store.get(record_id)
+        if not self.leave(lambda: self.open_record(record_id), pending_navigation=True):
+            return
+        sequence = self._navigation_sequence
+        def loaded(record):
+            if sequence != self._navigation_sequence:
+                return
             if record["invalid"]:
                 raise ValueError("内部文稿损坏，请从已有导出文件保留内容后再清理记录")
-            if not self.leave():
-                return
             self.current_record = record
             self.detail_title.setText(record["name"])
             self.detail_meta.setText(self.detail_summary(record))
             self.detail_meta.setToolTip(f"{record['model']}\n完成时间：{record['completed'][:19].replace('T', ' ')}")
             self.detail_message("；".join(record["warnings"]))
             self.saved_text = record["edited"] if record["edited"] is not None else record["final"]
-            self.editor.setPlainText(self.saved_text)
+            self._editor_needs_restore = False
+            self.editor.load_text(self.saved_text)
             self.stack.setCurrentIndex(1)
-        self.run_action(load)
+        self._queue_navigation(lambda: self.store.get(record_id), loaded)
 
-    def save_edit(self):
-        self.store.edit(self.current_record["id"], self.editor.toPlainText())
-        self.saved_text = self.editor.toPlainText()
-        self.current_record = self.store.get(self.current_record["id"])
-        self.detail_message("编辑已保存")
+    def save_edit(self, on_saved=None):
+        if (self._shutting_down or self._navigation_pending or self._editor_needs_restore
+                or self._save_pending or self.current_record is None or self.editor.loading):
+            return
+        record_id, text = self.current_record["id"], self.editor.toPlainText()
+        sequence = self._navigation_sequence
+        self._save_pending = True
+        def save():
+            self.store.edit(record_id, text)
+            return self.store.get(record_id)
+        def saved(record):
+            self._save_pending = False
+            if self.current_record and self.current_record["id"] == record_id:
+                self.saved_text = text
+                self.current_record = record
+                self.detail_message("编辑已保存")
+            if on_saved and not self._shutting_down and sequence == self._navigation_sequence:
+                on_saved()
+        self.background_action(save, saved, key="save")
 
     def export(self):
+        if self._shutting_down or self._navigation_pending or self._editor_needs_restore or self.editor.loading:
+            return
         record = self.current_record
         suffix = {"TXT": ".txt", "MD": ".md", "SRT": ".srt", "DOCX": ".docx"}[self.format.currentText()]
         target, _ = QFileDialog.getSaveFileName(self, "导出历史文稿", str(Path.home() / (safe_output_stem(Path(record["name"]).stem) + suffix)), f"{self.format.currentText()} (*{suffix})")
         if not target:
             return
-        if not target.lower().endswith(suffix):
+        added_suffix = not target.lower().endswith(suffix)
+        if added_suffix:
             target += suffix
-            if Path(target).exists() and QMessageBox.question(self, "覆盖导出文件？", f"{target}\n已存在，是否覆盖？", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
-                return
+        text = self.editor.toPlainText()
         def save():
-            export_history_document(Path(target), Path(record["source"]), self.editor.toPlainText(), record["segments"])
+            export_history_document(Path(target), Path(record["source"]), text, record["segments"])
             try:
                 self.store.add_export(record["id"], target)
             except Exception as exc:
-                self.detail_message("文件已导出，历史中的路径更新失败", target)
                 raise RuntimeError(f"文件已成功导出到 {target}，但历史中的路径更新失败：{exc}") from exc
-            self.current_record = self.store.get(record["id"])
-            self.detail_message(f"已导出：{Path(target).name}", target)
-        self.run_action(save)
+            return self.store.get(record["id"])
+        def exported(updated):
+            if self.current_record and self.current_record["id"] == record["id"]:
+                self.current_record = updated
+                self.detail_message(f"已导出：{Path(target).name}", target)
+        def start_export(exists=False):
+            if exists and QMessageBox.question(self, "覆盖导出文件？", f"{target}\n已存在，是否覆盖？", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+            self.background_action(save, exported, key="export")
+        if added_suffix:
+            self.background_action(lambda: Path(target).exists(), start_export, key="export")
+        else:
+            start_export()
 
     def delete_records(self, record_ids):
         ids = set(record_ids)
@@ -973,50 +1236,75 @@ class HistoryPage(QWidget):
             return
         if QMessageBox.question(self, "删除历史记录？", f"删除 {len(ids)} 条历史及软件内部文稿？\n原音视频、导出文件和模型缓存不会删除。", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
-        def remove():
-            self.store.delete(ids)
+        def removed(_):
             self._deleted_records.update(ids)
             for record_id in ids:
                 if record_id in self.jobs:
                     self.jobs[record_id].cancelled.set()
             self.selected.difference_update(ids)
             self.reload()
-        self.run_action(remove)
+        self.background_action(lambda: self.store.delete(ids), removed, key="delete")
 
     def clean_invalid(self):
-        self.run_action(lambda: self.delete_records(self.store.invalid_ids()))
+        self.background_action(self.store.invalid_ids, self.delete_records, key="invalid")
 
-    def open_media(self, record_id):
+    def open_media(self, record_id, *, resume_state=None):
+        if not self.leave(lambda: self.open_media(record_id, resume_state=resume_state), pending_navigation=True):
+            return
+        sequence = self._navigation_sequence
         def load():
-            if not self.leave():
-                return
             record = self.store.get(record_id)
+            record["source_exists"] = Path(record["source"]).is_file()
+            record["segments"] = history_subtitle_cues(record["segments"])
+            return record
+        def loaded(record):
+            if sequence != self._navigation_sequence:
+                return
             source = Path(record["source"])
-            if not source.is_file():
+            if not record["source_exists"]:
                 if QMessageBox.question(self, "原文件不可用", "原音视频已被移动或删除，历史文稿不受影响。是否重新选择原文件？", QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
                     return
                 path, _ = QFileDialog.getOpenFileName(self, "重新定位原音视频")
                 if not path:
                     return
-                self.store.relink(record_id, path)
-                record = self.store.get(record_id)
-                source = Path(path)
-            self.media_record = dict(record, segments=history_subtitle_cues(record["segments"]))
+                def relinked(_):
+                    if sequence == self._navigation_sequence:
+                        self.open_media(record_id, resume_state=resume_state)
+                self.background_action(lambda: self.store.relink(record_id, path), relinked)
+                return
+            self._build_media()
+            self.media_record = record
             is_audio = source.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".opus"}
             self.media_title.setText(record["name"])
             self.cues.clear()
             self.cues.resume_follow.stop()
             self.cues.manual_scroll = False
-            for cue in self.media_record["segments"]:
-                self.cues.addItem(f"{clock(cue['start'])} — {clock(cue['end'])}  {cue['text']}")
-                self.cues.item(self.cues.count() - 1).setData(Qt.UserRole, cue["start"])
+            cues = iter(self.media_record["segments"])
+            def append_cues():
+                if self._shutting_down or sequence != self._navigation_sequence:
+                    return
+                for _ in range(100):
+                    cue = next(cues, None)
+                    if cue is None:
+                        return
+                    self.cues.addItem(f"{clock(cue['start'])} — {clock(cue['end'])}  {cue['text']}")
+                    self.cues.item(self.cues.count() - 1).setData(Qt.UserRole, cue["start"])
+                QTimer.singleShot(0, append_cues)
+            append_cues()
             self.media_view.set_caption("")
             self.media_status.clear()
             self.media_status.hide()
             self.cues.setToolTip("单击字幕跳转到对应时间")
             self.stack.setCurrentIndex(2)
+            self._stopped_media_state = None
             self.media_view.open(source, record["name"], is_audio)
-        self.run_action(load)
+            if resume_state is not None:
+                position, was_playing = resume_state
+                self.media_view.resume_position = position
+                self.player.setPosition(position)
+                if not was_playing:
+                    self.player.pause()
+        self._queue_navigation(load, loaded)
 
     def _media_error(self, error, message):
         self.media_status.setText(f"无法播放：{message}。可定位原文件，使用系统播放器打开。")
@@ -1036,7 +1324,15 @@ class HistoryPage(QWidget):
         if not hasattr(self, "media_record"):
             return
         seconds = position / 1000
-        index = next((i for i, cue in enumerate(self.media_record["segments"]) if cue["start"] <= seconds < cue["end"]), -1)
-        self.media_view.set_caption(self.media_record["segments"][index]["text"] if index >= 0 else "")
+        segments = self.media_record["segments"]
+        if getattr(self, "_indexed_segments", None) is not segments:
+            self._indexed_segments = segments
+            # Playback uses history_subtitle_cues: sorted and non-overlapping,
+            # with the same half-open boundaries as SRT export.
+            self._cue_starts = [cue["start"] for cue in segments]
+        index = bisect_right(self._cue_starts, seconds) - 1
+        if index >= 0 and seconds >= segments[index]["end"]:
+            index = -1
+        self.media_view.set_caption(segments[index]["text"] if index >= 0 else "")
         if self.cues.currentRow() != index:
             self.cues.setCurrentRow(index)

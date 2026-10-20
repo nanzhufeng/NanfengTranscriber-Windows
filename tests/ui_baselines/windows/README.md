@@ -1,4 +1,4 @@
-> 历史布局资产：现有 manifest 的哈希检查证明旧资产完整，不证明当前 v1.0.6 的多 DPI/多显示器表现。当前截图见仓库 README；重新生成基线是独立验收动作。
+> 历史布局资产：现有 manifest 的哈希检查证明旧资产完整，不证明现行软件 的多 DPI/多显示器表现。现行规则见 [CONTRACTS.md](../../../docs/CONTRACTS.md)，当前截图见仓库 README；重新生成基线是独立验收动作。
 
 # Windows 多 DPI UI 基线
 

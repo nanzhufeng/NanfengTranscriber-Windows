@@ -172,6 +172,15 @@ class HistoryUiTests(unittest.TestCase):
         self.wait_for_history_save()
         self.app.processEvents()
 
+    def wait_for_actions(self, page):
+        from PySide6.QtTest import QTest
+        for _ in range(600):
+            self.app.processEvents()
+            if not page.pending_actions and page._read_job is None:
+                return
+            QTest.qWait(5)
+        self.fail("history action did not complete")
+
     def wait_for_history_save(self):
         from PySide6.QtTest import QTest
         for _ in range(600):
@@ -182,21 +191,27 @@ class HistoryUiTests(unittest.TestCase):
         self.fail("history save did not complete")
 
     def close_and_drain(self):
+        from PySide6.QtCore import QCoreApplication, QEvent
         from PySide6.QtTest import QTest
         self.window.close()
         for _ in range(600):
             self.app.processEvents()
-            page = self.window.history_page
-            if not self.window._history_save_jobs and (page is None or page._read_job is None):
+            # Closing now waits for settings, thumbnails and all owned jobs.
+            # A visible previous window can steal native mouse/activation events
+            # from the next test even after its history query has completed.
+            if self.window._closing and not self.window.isVisible() and not self.window._has_pending_shutdown():
+                self.window.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
                 return
             QTest.qWait(5)
-        self.fail("background history work did not stop")
+        self.fail("history window did not finish asynchronous close")
 
     def test_navigation_keeps_queue_worker_and_progress(self):
         worker = object()
         self.window.worker = worker
         self.window.history_button.click()
         self.app.processEvents()
+        self.wait_for_actions(self.window.history_page)
         self.assertIs(self.window.right_stack.currentWidget(), self.window.history_page)
         self.assertEqual(self.window.table.rowCount(), 1)
         self.assertIs(self.window.worker, worker)
@@ -231,11 +246,14 @@ class HistoryUiTests(unittest.TestCase):
     def test_editor_save_unsaved_cancel_and_original_protection(self):
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
         page.open_record(self.result.history_id)
+        self.wait_for_actions(page)
         page.editor.setPlainText("新的编辑稿")
         with patch.object(QMessageBox, "question", return_value=QMessageBox.Cancel):
             self.assertFalse(page.leave())
         page.save_edit()
+        self.wait_for_actions(page)
         stored = self.window.history_store.get(self.result.history_id)
         self.assertEqual(stored["edited"], "新的编辑稿")
         self.assertEqual(stored["original"], "原始口语")
@@ -244,6 +262,8 @@ class HistoryUiTests(unittest.TestCase):
     def test_subtitles_only_show_inside_their_time_ranges(self):
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
+        page._build_media()
         page.media_record = self.window.history_store.get(self.result.history_id)
         page.cues.addItems(["第一条", "第二条"])
         for position, expected in ((0, ""), (1500, "第一条"), (2500, ""), (4500, "第二条"), (6000, "")):
@@ -282,6 +302,8 @@ class HistoryUiTests(unittest.TestCase):
         from PySide6.QtTest import QTest
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
+        page._build_media()
         page.media_record = self.window.history_store.get(self.result.history_id)
         page.stack.setCurrentIndex(2)
         page.seek.setRange(0, 10000)
@@ -301,11 +323,14 @@ class HistoryUiTests(unittest.TestCase):
     def test_reexport_updates_locations_and_does_not_overwrite_original(self):
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
         page.open_record(self.result.history_id)
+        self.wait_for_actions(page)
         page.editor.setPlainText("用于导出的编辑稿")
         target = self.root / "exported.txt"
         with patch("app.history_ui.QFileDialog.getSaveFileName", return_value=(str(target), "")):
             page.export()
+            self.wait_for_actions(page)
         self.assertEqual(target.read_text(encoding="utf-8"), "用于导出的编辑稿\n")
         self.assertIn(str(target.resolve()), self.window.history_store.get(self.result.history_id)["outputs"])
         with patch.object(QMessageBox, "question", return_value=QMessageBox.Discard):
@@ -315,8 +340,10 @@ class HistoryUiTests(unittest.TestCase):
     def test_filter_change_clears_hidden_selection(self):
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
         page.toggle_selection()
         page.select_all()
+        self.wait_for_actions(page)
         self.assertEqual(page.selected, {self.result.history_id})
         page.search.setText("没有匹配")
         page.filter_changed()
@@ -339,27 +366,43 @@ class HistoryUiTests(unittest.TestCase):
         self.assertEqual(self.window.history_store.get(second.history_id)["final"], second.text)
 
     def test_history_more_is_a_transparent_circle_with_colored_icon(self):
-        from PySide6.QtCore import QPoint
-        from PySide6.QtGui import QColor
-        from PySide6.QtTest import QTest
+        from PySide6.QtCore import QEvent, QPoint, Qt
+        from PySide6.QtGui import QColor, QEnterEvent, QMouseEvent
         from PySide6.QtWidgets import QPushButton
         self.window._show_history()
         page = self.window.history_page
-        self.app.processEvents()
-        QTest.mouseMove(page, QPoint(1, 1))
+        self.wait_for_actions(page)
         self.app.processEvents()
         more = page.cards.findChildren(QPushButton, "HistoryMore")[0]
         self.assertEqual((more.width(), more.height()), (36, 36))
         self.assertTrue(more.icon().isNull() is False)
         self.assertEqual(more.text(), "")
         card = more.parentWidget()
-        surface = card.grab().toImage()
-        self.assertEqual(surface.pixelColor(more.x()+18, more.y()+4), QColor("#ffffff"))
-        QTest.mouseMove(more, QPoint(18, 18))
-        self.app.processEvents()
-        surface = card.grab().toImage()
-        self.assertEqual(surface.pixelColor(more.x()+2, more.y()+2), QColor("#ffffff"))
-        self.assertEqual(surface.pixelColor(more.x()+18, more.y()+4), QColor("#e5e7eb"))
+        def color_at(x, y):
+            surface = card.grab().toImage()
+            ratio = surface.devicePixelRatio()
+            return surface.pixelColor(round((more.x() + x) * ratio), round((more.y() + y) * ratio))
+
+        # QTest.mouseMove changes the shared Windows desktop cursor; a user or
+        # another foreground app can redirect it before Enter is delivered.
+        # Exercise the same Qt events directly without moving that cursor.
+        self.app.sendEvent(more, QEvent(QEvent.Leave))
+        self.assertFalse(more.underMouse())
+        self.assertEqual(color_at(18, 4), QColor("#ffffff"))
+        local = QPoint(18, 18)
+        scene = more.mapTo(self.window, local)
+        global_pos = more.mapToGlobal(local)
+        self.app.sendEvent(more, QEnterEvent(local, scene, global_pos))
+        self.app.sendEvent(more, QMouseEvent(
+            QEvent.MouseMove, local, scene, global_pos,
+            Qt.NoButton, Qt.NoButton, Qt.NoModifier,
+        ))
+        self.assertTrue(more.underMouse())
+        self.assertEqual(color_at(18, 4), QColor("#e5e7eb"))
+        self.assertEqual(color_at(2, 2), QColor("#ffffff"))
+        self.app.sendEvent(more, QEvent(QEvent.Leave))
+        self.assertFalse(more.underMouse())
+        self.assertEqual(color_at(18, 4), QColor("#ffffff"))
         self.assertEqual(page.select_button.palette().buttonText().color(), QColor("#b34646"))
 
     def test_batch_delete_reuses_timeline_circle_without_extra_checkbox(self):
@@ -367,6 +410,7 @@ class HistoryUiTests(unittest.TestCase):
         from PySide6.QtWidgets import QPushButton, QCheckBox
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
         self.app.processEvents()
         page.toggle_selection()
         QTest.qWait(20)
@@ -385,6 +429,7 @@ class HistoryUiTests(unittest.TestCase):
             self.assertTrue(circle.isChecked())
             play.assert_not_called()
         page.select_all()
+        self.wait_for_actions(page)
         QTest.qWait(20)
         self.assertTrue(page.cards.findChild(QPushButton, "HistorySelection").isChecked())
         page.toggle_selection()
@@ -393,10 +438,12 @@ class HistoryUiTests(unittest.TestCase):
     def test_document_header_keeps_one_title_and_paths_in_details(self):
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
         name = "长文件名测试" * 30 + ".mp4"
         with self.window.history_store.connection() as connection:
             connection.execute("UPDATE records SET name=? WHERE id=?", (name, self.result.history_id))
         page.open_record(self.result.history_id)
+        self.wait_for_actions(page)
         self.window.resize(1100, 750)
         self.app.processEvents()
         self.assertEqual(page.detail_title.toolTip(), name)
@@ -410,6 +457,7 @@ class HistoryUiTests(unittest.TestCase):
         self.assertFalse(page.detail_feedback.isVisible())
         page.editor.setPlainText("保存后的文稿")
         page.save_edit()
+        self.wait_for_actions(page)
         self.assertEqual(page.detail_feedback.text(), "编辑已保存")
         self.assertNotIn(str(self.root), page.detail_meta.full_text)
 
@@ -418,6 +466,8 @@ class HistoryUiTests(unittest.TestCase):
         from PySide6.QtGui import QColor
         self.window._show_history()
         page = self.window.history_page
+        self.wait_for_actions(page)
+        page._build_media()
         page.stack.setCurrentIndex(2)
         page.cues.addItems(["选中字幕", "普通字幕"])
         page.cues.setCurrentRow(0)
@@ -458,13 +508,13 @@ class HistoryUiTests(unittest.TestCase):
         from PySide6.QtCore import QTimer
         from PySide6.QtTest import QTest
         entered, release = threading.Event(), threading.Event()
-        original = self.window.history_store.query
+        original = self.window.history_store.query_cards
         def slow_query(*args, **kwargs):
             entered.set()
             release.wait(3)
             return original(*args, **kwargs)
         try:
-            with patch.object(self.window.history_store, "query", side_effect=slow_query):
+            with patch.object(self.window.history_store, "query_cards", side_effect=slow_query):
                 self.window._show_history()
                 self.assertTrue(entered.wait(1))
                 pulses = []

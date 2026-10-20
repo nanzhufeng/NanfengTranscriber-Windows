@@ -108,6 +108,18 @@ class HistoryStore:
             rows = connection.execute("SELECT * FROM records" + clause + " ORDER BY completed DESC, id DESC LIMIT ?", (*args, limit)).fetchall()
         return [self._record(row) for row in rows], total
 
+    def query_cards(self, keyword="", period="全部时间", limit=PAGE_SIZE):
+        """List navigation never materializes entire transcripts or subtitle JSON."""
+        clause, args = self._filter(keyword, period)
+        with self.connection() as connection:
+            total = connection.execute("SELECT COUNT(*) FROM records" + clause, args).fetchone()[0]
+            rows = connection.execute("""SELECT id, source, name, completed, mode, model,
+                language, duration, substr(coalesce(edited, final), 1, 240) AS final,
+                (trim(original)='' AND trim(final)='') AS invalid
+                FROM records""" + clause + " ORDER BY completed DESC, id DESC LIMIT ?",
+                (*args, limit)).fetchall()
+        return [dict(row, edited=None, warnings=[], outputs=[], segments=[]) for row in rows], total
+
     def all_matching_ids(self, keyword="", period="全部时间"):
         clause, args = self._filter(keyword, period)
         with self.connection() as connection:

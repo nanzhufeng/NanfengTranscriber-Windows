@@ -9,14 +9,15 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from uuid import uuid4
 from pathlib import Path
 from typing import Any, Callable
 
 from .postprocess import polish_to_simplified_chinese
-from .model_modes import model_for_mode
+from .model_modes import model_for_mode, CLOUD_MODELS
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -71,6 +72,8 @@ class TranscribeOptions:
     precision_subtitles: bool = False
     cloud_api_key: str = field(default="", repr=False, compare=False)
     cloud_state_dir: Path | None = None
+    invocation_task_id: str = ""
+    source_display_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -231,8 +234,10 @@ def _merge_readable_segments(segments: list[dict[str, Any]], max_gap: float = 1.
 
 
 def _extract_audio(source: Path, target: Path, options: TranscribeOptions, cancel_callback: CancelCallback | None) -> None:
+    _raise_if_cancelled(cancel_callback)
     command = [
         _ffmpeg_path(options, "ffmpeg.exe"),
+        "-nostdin",
         "-y",
         "-v",
         "error",
@@ -247,14 +252,24 @@ def _extract_audio(source: Path, target: Path, options: TranscribeOptions, cance
         "wav",
         str(target),
     ]
-    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, **_subprocess_window_options())
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, **_subprocess_window_options())
+    # A decoder may emit more diagnostics than the OS pipe holds. Drain while it
+    # runs, retaining only a bounded tail for the existing actionable errors.
+    stderr_tail = bytearray()
+    def drain_stderr() -> None:
+        while data := process.stderr.read(8192):
+            stderr_tail.extend(data)
+            del stderr_tail[:-65536]
+    reader = threading.Thread(target=drain_stderr, name="ffmpeg-stderr", daemon=True)
+    reader.start()
     try:
         while True:
             return_code = process.poll()
             if return_code is not None:
+                reader.join(timeout=1)
                 if return_code != 0:
-                    _stdout, stderr = process.communicate()
-                    detail = (stderr or b"").decode("utf-8", errors="replace").strip().lower()
+                    detail = stderr_tail.decode("utf-8", errors="replace").strip().lower()
                     if "does not contain any stream" in detail or "output file #0 does not contain any stream" in detail:
                         raise RuntimeError("未检测到可转写的音轨。该视频可能没有声音或只有画面。")
                     if "no such file or directory" in detail:
@@ -267,14 +282,16 @@ def _extract_audio(source: Path, target: Path, options: TranscribeOptions, cance
                 return
             _raise_if_cancelled(cancel_callback)
             time.sleep(0.2)
-    except TranscribeStopped:
-        process.terminate()
-        try:
-            process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=3)
-        raise
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+        reader.join(timeout=1)
+        process.stderr.close()
 
 
 def _write_txt(target: Path, segments: list[dict[str, Any]]) -> None:
@@ -399,7 +416,11 @@ def _dll_exists_in_path(dll_names: set[str]) -> bool:
             return True
     if not _is_frozen_runtime():
         for package_name in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_nvrtc"):
-            spec = importlib.util.find_spec(package_name)
+            try:
+                spec = importlib.util.find_spec(package_name)
+            except (ImportError, ValueError):
+                # The optional parent namespace may be absent on CPU-only hosts.
+                continue
             if spec and spec.submodule_search_locations:
                 bin_dir = Path(list(spec.submodule_search_locations)[0]) / "bin"
                 for dll_name in dll_names:
@@ -836,6 +857,9 @@ def transcribe_file(
     cancel_callback: CancelCallback | None = None,
     session: TranscriptionSession | None = None,
 ) -> TranscribeResult:
+    if options.model_size in CLOUD_MODELS:
+        options = replace(options, source_display_name=source.name,
+                          invocation_task_id=options.invocation_task_id or uuid4().hex)
     if importlib.util.find_spec("faster_whisper") is None:
         raise RuntimeError(
             "缺少 faster-whisper 转写依赖。\n\n"
@@ -866,11 +890,13 @@ def transcribe_file(
                 progress_callback,
                 cancel_callback,
             )
+            _raise_if_cancelled(cancel_callback)
             if options.export_srt and options.precision_subtitles and model_for_mode(options.model_size) == "turbo" and segments:
                 from .qwen_bridge import QwenWorker
                 if active_session._qwen_worker is None:
                     active_session._qwen_worker = QwenWorker()
                 segments = active_session._qwen_worker.align(audio_path, segments, options, progress_callback, cancel_callback)
+                _raise_if_cancelled(cancel_callback)
     finally:
         if owns_session:
             active_session.close()
@@ -887,6 +913,7 @@ def transcribe_file(
     final_text = plain_text
     if options.postprocess_enabled:
         final_text = polish_to_simplified_chinese(plain_text, source.stem, progress_callback, cancel_callback)
+    _raise_if_cancelled(cancel_callback)
     if options.export_txt:
         txt_path = output_base / f"{safe_stem}.txt"
         if options.postprocess_enabled:

@@ -6,7 +6,7 @@
 |---|---|---|
 | 产品名、版本、开发时间、仓库 | `app/assets/product.json` | `app/product_info.py`、关于窗口、Inno 构建 |
 | 两种本地/两种云端模式、模型显示与旧值兼容 | `app/model_modes.py` | 主模式输入框、队列、转写会话 |
-| 队列、QSettings、窗口与完成反馈 | `app/main.py` | 文件/文件夹/拖放、开始/停止、设置 |
+| 队列、窗口与完成反馈 | `app/main.py` | 文件/文件夹/拖放、开始/停止、设置 |
 | 本地历史快照、筛选、编辑与删除边界 | `app/history.py` | 完成事件、历史页面；SQLite v1 |
 | 嵌入播放器、全屏、续播与画面内控件 | `app/media_player.py` | 历史核对页；复用 Qt Multimedia，不新增运行时 |
 | 历史日期卡片、详情、重新导出与媒体核对 | `app/history_ui.py` | 侧栏历史入口、右侧页面栈 |
@@ -15,12 +15,20 @@
 | Qwen 模型加载、识别与对齐 | `app/qwen_worker.py` | 独立 Python stdin/stdout；不依赖 Qt |
 | 百炼文件转写、任务恢复与协议校验 | `app/cloud_asr.py` | 转写 Session，复用原有导出/历史 |
 | Windows 用户加密 API Key | `app/cloud_credentials.py` | 设置与批次启动，不进入文稿/恢复文件 |
+| 云端调用安全事实、文件汇总、版本化费用估算 | `app/invocations.py` | 转写工作线程写入，独立SQLite本机库 |
+| 调用记录入口与后台查询窗口 | `app/invocation_ui.py` | 设置API区下方，按手机版展示完整文件 |
+| 缓存设置与单路持久化 | `app/settings_io.py` | 主窗口、设置表单与窗口布局 |
+| 有界通用I/O任务 | `app/ui_io.py` | 启动预检、文件定位、输出目录 |
+| 可取消依赖安装与进程树收尾 | `app/dependency_install.py` | 主窗口安装工作线程 |
+| 有界诊断与完成声音 | `app/background_feedback.py` | GUI反馈，不等待磁盘/音频驱动 |
 | 后台文件发现与时长探测 | `app/media_probe.py` | 工作台添加文件，持久索引通知 |
 | 可选文本 API 与中文错误 | `app/postprocess.py` | TXT/Markdown/DOCX 的润色文本 |
 | 主环境/独立模型环境/打包工具版本 | 三份 `requirements*.txt` | 源码安装、运行环境安装、构建 |
 | 构建、安装与资源 | `scripts/build_windows_app.ps1`、`build_windows_installer_inno.ps1`、`installer/*.iss` | 当前 Windows 正式路径 |
 
-数据流：`start.py → MainWindow → TranscribeWorker → TranscriptionSession → transcribe_file → 文档文件 → 队列反馈/定位`。
+数据流：`start.py → MainWindow → TranscribeWorker → transcribe_file（复用批次TranscriptionSession）→ 本地推理/已配置的云端文件转写 → 导出 → 队列反馈 → 后台历史归档 → 保存成功后移出队列`。
+
+合同按C01–C12在[索引](contract-registry.json)关联源码符号与回归；新增概念先定位所属编号。索引不复制产品规则，详情仍读唯一正文。后台动作、导航取消、设置落盘与线程收尾边界见C06；尚未验证的底层运行限制由[审计](contract-audit.md)维护，不能据模块拆出便宣称问题已修复。
 
 GUI 与运行时是单向依赖：版本和模型目录不依赖 Qt；推理核心不读取界面状态。既有结果检查和导出共用 `resolve_output_directory`；UI GPU 预检查复用 `gpu_libraries_available`。
 
@@ -32,6 +40,8 @@ python tools/check_project_contracts.py
 $env:QT_QPA_PLATFORM='offscreen'
 python -m unittest discover -s tests
 ```
+
+Qt测试按单进程串行运行；临时目录清理前等待本测试的异步关闭/读写结束。样式状态检查使用Qt合成事件，不依赖用户物理鼠标；Windows原生下拉框需等待实际Show/Hide，不能假设showPopup返回即已显示。
 
 构建环境另用 `requirements-build.txt`。Qwen 使用独立环境及 `requirements-qwen.txt`，Torch 版本和 CUDA wheel 索引由 `scripts/setup_qwen_runtime.ps1` 定义。不要把 Qwen/Torch 安装进主包构建环境。
 

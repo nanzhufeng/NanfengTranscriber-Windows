@@ -35,6 +35,8 @@ class QwenWorker:
     def __init__(self):
         self.process = None
         self.messages = queue.Queue()
+        self.reader = None
+        self.writer = None
 
     def _start(self):
         self.messages = queue.Queue()
@@ -49,18 +51,22 @@ class QwenWorker:
             environment.pop(key, None)
         self.process = subprocess.Popen(
             [str(python), "-u", str(worker)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, text=True, encoding="utf-8", env=environment,
+            stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace", env=environment,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         process = self.process
         messages = self.messages
         def read():
-            for line in process.stdout:
-                try:
-                    messages.put(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-            messages.put({"error": "中文精确运行进程已退出，请检查独立运行环境。"})
+            try:
+                for line in process.stdout:
+                    try:
+                        message = json.loads(line)
+                        if isinstance(message, dict):
+                            messages.put(message)
+                    except json.JSONDecodeError:
+                        continue
+            finally:
+                messages.put({"error": "中文精确运行进程已退出，请检查独立运行环境。"})
         self.reader = threading.Thread(target=read, daemon=True)
         self.reader.start()
 
@@ -80,8 +86,17 @@ class QwenWorker:
                    "cache": str(default_model_cache_dir())}
         if segments is not None:
             request["segments"] = segments
-        self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
-        self.process.stdin.flush()
+        process, messages = self.process, self.messages
+        # Full-file alignment text may exceed pipe capacity. Keep cancellation
+        # reachable even when a loading/stuck child has stopped reading stdin.
+        def write():
+            try:
+                process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+                process.stdin.flush()
+            except (OSError, ValueError):
+                messages.put({"error": "中文精确运行进程通信失败，请重试。"})
+        self.writer = threading.Thread(target=write, name="qwen-request", daemon=True)
+        self.writer.start()
         while True:
             if cancelled and cancelled():
                 self.close()
@@ -99,12 +114,22 @@ class QwenWorker:
 
     def close(self):
         if self.process is not None:
-            if self.process.poll() is None:
-                self.process.terminate()
+            process = self.process
+            if process.poll() is None:
+                process.terminate()
                 try:
-                    self.process.wait(timeout=10)
+                    process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
-                    self.process.kill()
-                    self.process.wait()
+                    process.kill()
+                    process.wait(timeout=2)
+            for thread in (self.writer, self.reader):
+                if thread is not None:
+                    thread.join(timeout=1)
+            for stream in (process.stdin, process.stdout):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
             self.process = None
-            self.reader.join(timeout=1)
+            self.reader = self.writer = None

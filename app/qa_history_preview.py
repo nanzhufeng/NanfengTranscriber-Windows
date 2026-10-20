@@ -1,5 +1,6 @@
 """Opt-in, isolated frozen-app verification with a caller-owned sample file."""
 import json
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
@@ -20,16 +21,31 @@ def capture_history(window, target, source, finish):
     window._show_history()
     page = window.history_page
 
+    def wait_for(predicate, action, seconds=15):
+        deadline = time.monotonic() + seconds
+        def check():
+            if predicate():
+                action()
+            elif time.monotonic() < deadline:
+                QTimer.singleShot(25, check)
+            else:
+                (target / "qa-error.txt").write_text("隔离页面或媒体未在时限内就绪", encoding="utf-8")
+                page.show_list()
+                finish()
+        QTimer.singleShot(0, check)
+
     def document():
         window.grab().save(str(target / "history.png"))
         page.open_record(result.history_id)
-        QTimer.singleShot(150, media)
+        wait_for(lambda: not page.pending_actions and page.stack.currentIndex() == 1, media)
 
     def media():
         window.grab().save(str(target / "document.png"))
-        page.audio.setVolume(0)
         page.open_media(result.history_id)
-        QTimer.singleShot(1600, verify)
+        def ready():
+            page.audio.setVolume(0)
+            QTimer.singleShot(1600, verify)
+        wait_for(lambda: getattr(page, "player", None) is not None and page.player.duration() > 0, ready)
 
     def verify():
         frame = page.video.videoSink().videoFrame().isValid()
@@ -41,4 +57,4 @@ def capture_history(window, target, source, finish):
         page.show_list()
         finish()
 
-    QTimer.singleShot(650, document)
+    wait_for(lambda: page._read_job is None and bool(page.records) and not page.pending_actions, document)

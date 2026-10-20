@@ -4,19 +4,25 @@
 
 ## 软件界面预览
 
-Windows v1.0.11 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
+Windows v1.0.12 实际运行截图，主窗口 1600×1000；历史与播放器使用受控演示数据。
 
-![南枫转写 Windows 软件界面预览](docs/preview-v1.0.11.png)
+![南枫转写 Windows 软件界面预览](docs/preview-v1.0.12.png)
 
-![南枫转写 Windows 设置](docs/settings-v1.0.11.png)
+![南枫转写 Windows 设置](docs/settings-v1.0.12.png)
 
-![南枫转写 Windows 历史](docs/history-v1.0.11.png)
+![南枫转写 Windows 历史](docs/history-v1.0.12.png)
 
-![南枫转写 Windows 播放核对](docs/player-v1.0.11.png)
+![南枫转写 Windows 播放核对](docs/player-v1.0.12.png)
 
-## v1.0.11 更新
+## v1.0.12 更新
 
-- 新增高精度 Qwen 和低成本 Paraformer 云端转写，API Key 在设置中由 Windows 加密保存，上传前确认。
+- 修复历史、调用记录、大队列和慢盘操作中的界面阻塞；停止、关闭和后台写入采用异步收尾。
+- 设置API区域提供调用记录；云端模型配置好Key后直接启动。
+- 本机验证与底层运行限制见[当前状态](docs/PROJECT_STATUS.md)及[卡顿审计](docs/contract-audit.md)。
+
+## 已有功能
+
+- 新增高精度 Qwen 和低成本 Paraformer 云端转写，API Key 在设置中由 Windows 加密保存；配置好Key后可直接启动。
 - 历史查询、保存、文件夹发现和时长探测改为后台处理，减少点击卡顿。
 - 成功任务保存历史后自动从当前队列移除，失败项目保留。
 - 设置支持拖动、缩放并记住大小和位置；API 输入框内置显示／隐藏眼睛图标。
@@ -44,7 +50,7 @@ Windows v1.0.11 实际运行截图，主窗口 1600×1000；历史与播放器�
 
 ## Windows 安装
 
-从 [GitHub Releases](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.11) 下载 `NanfengTranscriber-Windows-v1.0.11-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
+从 [GitHub Releases](https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.12) 下载 `NanfengTranscriber-Windows-v1.0.12-Setup.exe`，双击安装。Release 仅提供安装程序本体，SHA-256 见发布收据和 GitHub 资产摘要；安装说明以本 README 为准。
 
 主安装包不包含 PyTorch/CUDA 或模型权重。首次使用中文精确或快速模式精确字幕时，软件提示安装独立运行环境，下载进度在安装窗口显示；完成后重新开始转写。环境保存在 `%LOCALAPPDATA%\NanfengTranscriber\runtimes\qwen`，依赖占用数 GB，但升级软件时不会重复安装。识别及对齐模型首次使用时另行下载，之后在本地缓存复用。
 
@@ -52,7 +58,7 @@ Windows 安装包未签名，系统可能显示未知发布者提示。
 
 ## 源码运行
 
-中文精确使用独立的本地 Python 运行环境。首次运行 `安装中文精确运行环境_Windows.bat` 安装依赖，再运行 `启动最新界面_Windows.bat`。环境位于项目 `.runtime/qwen`，也可通过 `NANFENG_QWEN_PYTHON` 指定已有环境的 Python。模型首次下载后保存在用户级缓存，后续离线复用；语音推理和字幕对齐不上传音频。
+使用本地中文精确时需要独立 Python 运行环境。首次运行 `安装中文精确运行环境_Windows.bat` 安装依赖，再运行 `启动最新界面_Windows.bat`。本地环境位于项目 `.runtime/qwen`，也可通过 `NANFENG_QWEN_PYTHON` 指定已有环境的 Python。模型首次下载后保存在用户级缓存，后续离线复用；本地模式语音推理和字幕对齐不上传音频；云端模式点击开始直接运行，设置中保留上传和计费说明。
 
 旧版本 Whisper 选择自动迁移为通用快速；旧缓存不再作为可选模型加载。日语精确字幕额外需要 `nagisa` 分词依赖，未安装时请使用快速模式的原生时间戳；精确字幕失败会提示原因，不伪造对齐时间。
 
@@ -71,7 +77,9 @@ Windows 也可双击 `启动南枫转写_Windows_源码测试.bat`。本地模�
 
 ## 翻译与润色
 
-云端语音转写使用阿里云百炼北京服务，API Key 在设置中填写，默认遮挡，可点击眼睛查看；保存时由当前 Windows 用户加密保护。云端模型会上传音频并可能计费，每次批量开始前确认；本地模式继续在本地处理。云端协议和异常恢复已用模拟接口验证，真实付费服务尚未验证。
+云端语音转写使用阿里云百炼北京服务，API Key 在设置中填写，默认遮挡，可点击眼睛查看；保存时由当前 Windows 用户加密保护。云端模型会上传音频并可能计费，选择后点击开始直接运行，不再弹二次确认；本地模式继续在本地处理。云端协议和异常恢复已用模拟接口验证，真实付费服务尚未验证。
+
+当前未发布源码在 API 设置下方提供“调用记录”：按完整文件汇总成功/失败、模型、时间、耗时、Token及费用估算，与手机版使用相同记录规则。不保存密钥、音频或转写正文；服务未提供用量时显示暂无费用数据。仅记录接入之后实际发出的云端调用，不补造旧任务账单。
 
 “翻译润色”是可选的联网能力，需要配置 `NANZHU_TEXT_API_KEY` 或 `OPENAI_API_KEY`。未配置密钥时默认关闭；若手动开启，软件会提示缺少 API 并阻止开始，取消勾选后可只做本地转写。联网润色发送文字和文件标题，不上传音视频文件。
 
@@ -82,7 +90,7 @@ API 鉴权失败、请求超时、空响应和异常响应格式均有独立错�
 - 自动化测试覆盖已有结果续跑、API 鉴权/超时/空响应、模型持久缓存、设置记忆、逐项定位、结束反馈、Inno 安装器合同和四档 DPI 截图基线。
 - 历史 medium/RTX 4090 三样本基准为 130.499 秒到 28.403 秒；这不是当前 Qwen/Turbo 的准确率或速度对比。旧四档 DPI 资产检查也不等于当前真实多显示器验收。
 - macOS 版本尚未实现；迁移要求见 `docs/MAC_CODEX_START_PROMPT.md`。
-- 当前行为见 [合同](docs/CONTRACTS.md)，结构见 [架构入口](docs/context.md)，维护检查见 [合同审计](docs/contract-audit.md)，实际验证见 [当前状态](docs/PROJECT_STATUS.md)，历史证据见 [历史索引](docs/HISTORY.md)。
+- 当前行为见唯一[合同正文](docs/CONTRACTS.md)及[维护索引](docs/contract-registry.json)，结构见 [架构入口](docs/context.md)，维护检查见 [合同审计](docs/contract-audit.md)，实际验证见 [当前状态](docs/PROJECT_STATUS.md)，历史证据见 [历史索引](docs/HISTORY.md)。
 
 ## 许可证
 

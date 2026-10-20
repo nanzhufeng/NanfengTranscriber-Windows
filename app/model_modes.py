@@ -1,4 +1,4 @@
-"""The two user-facing local transcription modes and fixed aligner."""
+"""Local and cloud mode catalogue, legacy aliases, and fixed local aligner."""
 
 LOCAL_MODE_OPTIONS = ["中文精确", "通用快速"]
 CLOUD_MODELS = {"高精度 Qwen": "qwen-audio-3.1-asr-flash-filetrans", "低成本 Paraformer": "paraformer-v2"}
