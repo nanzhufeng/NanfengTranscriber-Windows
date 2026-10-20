@@ -130,6 +130,9 @@ class ProjectContractTests(unittest.TestCase):
                 receipt["version"] = previous
                 (root / f"docs/release-v{previous}.json").write_text(json.dumps(receipt), encoding="utf-8")
                 (root / "docs/PROJECT_STATUS.md").write_text(status.replace(f"Published version: {APP_VERSION}", f"Published version: {previous}"), encoding="utf-8")
+                for document in root.rglob("*.md"):
+                    text = document.read_text(encoding="utf-8")
+                    document.write_text(text.replace(f"release-v{APP_VERSION}.json", f"release-v{previous}.json"), encoding="utf-8")
             self.assertTrue(all(passed for _, passed, _ in audit_project(root)))
             self.assertFalse(dict((name, passed) for name, passed, _ in audit_project(root, release=True))["release receipt"])
 

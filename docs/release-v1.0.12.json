@@ -1,0 +1,44 @@
+{
+  "version": "1.0.12",
+  "platform": "Windows",
+  "installer": "NanfengTranscriber-Windows-v1.0.12-Setup.exe",
+  "bytes": 167172031,
+  "sha256": "72d89e6ff003f2682f5628aeec57dd926b6dcdf4c1148dc766d7b68d45831810",
+  "authenticode": "NotSigned",
+  "sourceCommit": "c2b0fbc8e6fde2aeb7f5abdc8fc56e13b38f33bb",
+  "releaseUrl": "https://github.com/nanzhufeng/NanfengTranscriber-Windows/releases/tag/v1.0.12",
+  "installerLanguage": "Simplified Chinese",
+  "isolatedInstallerLifecycle": "PASS - dedicated QA AppId with identical application payload",
+  "payloadFilesVerified": 846,
+  "installedMediaPlayback": {
+    "videoFrameValid": true,
+    "position": 3204,
+    "duration": 12027,
+    "error": "",
+    "subtitle": "",
+    "historyCount": 1
+  },
+  "frozenMediaPlayback": {
+    "videoFrameValid": true,
+    "position": 1625,
+    "duration": 12027,
+    "error": "",
+    "subtitle": "这是一段受控演示视频",
+    "historyCount": 1
+  },
+  "packagedPowerShell5Verification": "PASS with explicitly selected existing source venv; CUDA True",
+  "offlineTranscription": "NOT RUN - current default runtime and model cache unavailable",
+  "limitations": [
+    "Default packaged Qwen runtime and model cache unavailable; offline model inference not repeated for v1.0.12",
+    "Production AppId upgrade, paid APIs, all codecs and physical multi-DPI not tested"
+  ],
+  "windowsReleaseChecks": 14,
+  "releaseContractChecks": 34,
+  "buildCodeCommit": "48bf067a070d31677b6c6f9299dcb79ff2091d52",
+  "automatedTests": 181,
+  "automatedTestsSeconds": 43.586,
+  "remoteDigestVerified": "sha256:72d89e6ff003f2682f5628aeec57dd926b6dcdf4c1148dc766d7b68d45831810",
+  "remoteAssetCount": 1,
+  "publishedAt": "2026-10-20T09:06:29Z",
+  "assemblyRun": "https://github.com/nanzhufeng/NanfengTranscriber-Windows/actions/runs/39398208494"
+}
