@@ -56,3 +56,5 @@ Qt测试按单进程串行运行；临时目录清理前等待本测试的异步
 所有 UI 资源归本项目 `app/assets`；FFmpeg/FFprobe 构建输入仍为仓库外 `../JHlib/ffmpeg`，打包到 `tools/ffmpeg`。缺失是构建条件缺口，不能伪造已包含。
 
 历史设计、性能与旧交接见 [HISTORY.md](HISTORY.md)，不作为当前默认模型、发布形式或签名规则。macOS 迁移尚未实施，见 [迁移提示](MAC_CODEX_START_PROMPT.md)。
+
+源码测试不要求未来版本的发布收据；已声明的当前收据仍严格校验，正式发布使用 `python tools/check_project_contracts.py --release`。收据负例在临时目录构造，与实际发布状态分离，避免未发布源码标签无法运行完整回归。

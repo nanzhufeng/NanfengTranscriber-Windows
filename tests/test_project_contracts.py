@@ -19,9 +19,15 @@ class ProjectContractTests(unittest.TestCase):
             "scripts/build_windows_app.ps1", "scripts/setup_qwen_runtime.ps1", "build_windows_installer_inno.ps1",
             f"docs/preview-v{APP_VERSION}.png", f"docs/settings-v{APP_VERSION}.png",
             f"docs/history-v{APP_VERSION}.png", f"docs/player-v{APP_VERSION}.png",
-            f"docs/release-v{APP_VERSION}.json", "docs/contract-registry.json",
+            "docs/contract-registry.json",
         }
         files.update(document["path"] for document in registry["documents"])
+        status = (ROOT / "docs/PROJECT_STATUS.md").read_text(encoding="utf-8")
+        published = re.search(r"^- Published version: (.+)$", status, re.M)[1]
+        files.add(f"docs/release-v{published}.json")
+        current_receipt = f"docs/release-v{APP_VERSION}.json"
+        if (ROOT / current_receipt).is_file():
+            files.add(current_receipt)
         for contract in registry["contracts"]:
             files.update(reference.split(":", 1)[0] for reference in contract["owners"])
             files.update(contract["tests"])
@@ -40,6 +46,12 @@ class ProjectContractTests(unittest.TestCase):
             destination = root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
+        if not (root / current_receipt).exists():
+            # Synthetic release claim only inside this temporary negative-test
+            # fixture. Unpublished source tags need no future receipt in Git.
+            receipt = json.loads((root / f"docs/release-v{published}.json").read_text(encoding="utf-8"))
+            receipt.update(version=APP_VERSION, installer=f"NanfengTranscriber-Windows-v{APP_VERSION}-Setup.exe")
+            (root / current_receipt).write_text(json.dumps(receipt, indent=2), encoding="utf-8")
 
     def test_missing_contract_group_is_rejected(self):
         with TemporaryDirectory() as temp:
@@ -72,7 +84,8 @@ class ProjectContractTests(unittest.TestCase):
                 self.assertFalse(dict((name, passed) for name, passed, _ in audit_project(root))[expected])
 
     def test_model_status_and_release_digest_reject_drift(self):
-        signature = json.loads((ROOT / f"docs/release-v{APP_VERSION}.json").read_text(encoding="utf-8"))["authenticode"]
+        status = (ROOT / "docs/PROJECT_STATUS.md").read_text(encoding="utf-8")
+        signature = re.search(r"^- Release signature: (.+)$", status, re.M)[1]
         alternate_signature = "Valid" if signature == "NotSigned" else "NotSigned"
         cases = (
             ("documented models", "docs/CONTRACTS.md", "paraformer-v2", "paraformer-obsolete"),
@@ -100,8 +113,25 @@ class ProjectContractTests(unittest.TestCase):
             self.assertFalse(dict((name, passed) for name, passed, _ in audit_project(root))["links README.md"])
 
     def test_current_contracts_and_declared_release_receipt(self):
-        failures = [item for item in audit_project(ROOT, release=True) if not item[1]]
+        declared = (ROOT / f"docs/release-v{APP_VERSION}.json").is_file()
+        failures = [item for item in audit_project(ROOT, release=declared) if not item[1]]
         self.assertEqual(failures, [])
+
+    def test_unpublished_source_is_valid_but_release_claim_requires_a_receipt(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.fixture(root)
+            (root / f"docs/release-v{APP_VERSION}.json").unlink()
+            # Preserve the previous published receipt used by the status page.
+            status = (root / "docs/PROJECT_STATUS.md").read_text(encoding="utf-8")
+            if f"Published version: {APP_VERSION}" in status:
+                receipt = json.loads((ROOT / f"docs/release-v{APP_VERSION}.json").read_text(encoding="utf-8"))
+                previous = "0.0.1"
+                receipt["version"] = previous
+                (root / f"docs/release-v{previous}.json").write_text(json.dumps(receipt), encoding="utf-8")
+                (root / "docs/PROJECT_STATUS.md").write_text(status.replace(f"Published version: {APP_VERSION}", f"Published version: {previous}"), encoding="utf-8")
+            self.assertTrue(all(passed for _, passed, _ in audit_project(root)))
+            self.assertFalse(dict((name, passed) for name, passed, _ in audit_project(root, release=True))["release receipt"])
 
     def test_stale_readme_version_is_rejected(self):
         with TemporaryDirectory() as temp:
